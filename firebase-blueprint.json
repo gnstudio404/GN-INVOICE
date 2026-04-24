@@ -1,0 +1,39 @@
+{
+  "entities": {
+    "invoice": {
+      "title": "Invoice",
+      "description": "Electronic invoice data",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "invoiceTitle": { "type": "string" },
+        "businessActivity": { "type": "string" },
+        "serviceProvider": { "type": "string" },
+        "clientName": { "type": "string" },
+        "logo": { "type": "string" },
+        "phoneNumber": { "type": "string" },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "description": { "type": "string" },
+              "price": { "type": "number" }
+            }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "savedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "items"]
+    }
+  },
+  "firestore": {
+    "invoices": {
+      "schema": "invoice",
+      "description": "Collection of saved invoices"
+    }
+  }
+}

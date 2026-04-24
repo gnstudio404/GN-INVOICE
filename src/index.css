@@ -1,0 +1,48 @@
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", "Cairo", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", "Cairo", sans-serif;
+  --font-arabic: "Cairo", sans-serif;
+}
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  body {
+    @apply bg-[#FDFDFD] text-[#1A1A1A] font-sans transition-colors duration-300;
+  }
+}
+
+@layer utilities {
+  @media print {
+    @page {
+      margin: 0;
+      size: auto;
+    }
+    body {
+      background: white !important;
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+    .no-print {
+      display: none !important;
+    }
+    .print-only {
+      display: block !important;
+    }
+    .invoice-container {
+      box-shadow: none !important;
+      border: none !important;
+      padding: 4rem !important;
+      margin: 0 !important;
+      width: 100% !important;
+      border-radius: 0 !important;
+    }
+    * {
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+  }
+}
