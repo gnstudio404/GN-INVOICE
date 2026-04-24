@@ -394,8 +394,15 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     setIsLoggingIn(true);
     try {
       await signInWithPopup(auth, googleProvider);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Login error:", error);
+      if (error.code === 'auth/popup-blocked') {
+        alert(lang === 'ar' ? 'تم حظر المنبثقة! يرجى السماح بالمنبثقات لهذا الموقع.' : 'Popup blocked! Please allow popups for this site.');
+      } else if (error.code === 'auth/unauthorized-domain') {
+        alert(lang === 'ar' ? 'هذا النطاق غير مصرح به في Firebase Console.' : 'This domain is not authorized in Firebase Console.');
+      } else {
+        alert(lang === 'ar' ? 'فشل تسجيل الدخول: ' + error.message : 'Login failed: ' + error.message);
+      }
     } finally {
       setIsLoggingIn(false);
     }
