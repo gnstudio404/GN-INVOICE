@@ -7,6 +7,7 @@
       "properties": {
         "id": { "type": "string" },
         "userId": { "type": "string" },
+        "contactId": { "type": "string", "description": "Link to a specific contact" },
         "invoiceTitle": { "type": "string" },
         "businessActivity": { "type": "string" },
         "serviceProvider": { "type": "string" },
@@ -24,16 +25,92 @@
             }
           }
         },
+        "totalAmount": { "type": "number" },
+        "status": { "type": "string", "enum": ["paid", "pending", "overdue"] },
         "createdAt": { "type": "string", "format": "date-time" },
         "savedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "items"]
+    },
+    "contact": {
+      "title": "Contact",
+      "description": "Customer or Person information",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "businessId": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "address": { "type": "string" },
+        "notes": { "type": "string" },
+        "totalBalance": { "type": "number", "description": "Current balance for this person" },
+        "totalPaid": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "name"]
+    },
+    "payment": {
+      "title": "Payment",
+      "description": "Record of money received",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "contactId": { "type": "string" },
+        "invoiceId": { "type": "string" },
+        "amount": { "type": "number" },
+        "method": { "type": "string", "enum": ["cash", "bank", "card", "other"] },
+        "date": { "type": "string", "format": "date-time" },
+        "note": { "type": "string" }
+      }
+    },
+    "expense": {
+      "title": "Expense",
+      "description": "Business expenditures",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "businessId": { "type": "string" },
+        "category": { "type": "string", "description": "Rent, Materials, Shipping, etc." },
+        "amount": { "type": "number" },
+        "date": { "type": "string", "format": "date-time" },
+        "description": { "type": "string" }
+      }
+    },
+    "product": {
+      "title": "Product",
+      "description": "Inventory items",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "quantity": { "type": "number" },
+        "price": { "type": "number" },
+        "cost": { "type": "number", "description": "Purchase cost for profit calculation" }
+      }
     }
   },
   "firestore": {
     "invoices": {
       "schema": "invoice",
       "description": "Collection of saved invoices"
+    },
+    "clients": {
+      "schema": "contact",
+      "description": "Business clients and customers"
+    },
+    "payments": {
+      "schema": "payment",
+      "description": "Payment history"
+    },
+    "expenses": {
+      "schema": "expense",
+      "description": "Business expenses"
+    },
+    "products": {
+      "schema": "product",
+      "description": "Inventory and products"
     }
   }
 }

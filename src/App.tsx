@@ -24,6 +24,7 @@ import {
   onSnapshot, 
   deleteDoc, 
   doc, 
+  getDoc,
   orderBy, 
   updateDoc,
   serverTimestamp 
@@ -50,10 +51,30 @@ import {
   CloudOff,
   History,
   Save,
-  X
+  X,
+  LayoutDashboard,
+  Users,
+  Wallet,
+  Settings,
+  Search,
+  ArrowUpRight,
+  ArrowDownLeft,
+  Filter,
+  UserPlus,
+  Link as LinkIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
+import { QRCodeSVG } from 'qrcode.react';
+import { 
+  AreaChart, 
+  Area, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ResponsiveContainer 
+} from 'recharts';
 import { cn } from './lib/utils';
 
 // --- Translations ---
@@ -125,6 +146,22 @@ const translations = {
     saveError: "Failed to save invoice.",
     deleteSuccess: "Invoice deleted.",
     deleteError: "Failed to delete invoice.",
+    dashboard: "Dashboard",
+    clients: "Clients",
+    ledger: "Ledger/Accounts",
+    addClient: "Add New Client",
+    clientName: "Client Name",
+    email: "Email",
+    phone: "Phone",
+    address: "Address",
+    balance: "Balance",
+    transactions: "Transactions",
+    noClients: "No clients yet.",
+    searchClients: "Search clients...",
+    totalReceivable: "Total Receivable",
+    recentInvoices: "Recent Invoices",
+    businessOverview: "Business Overview",
+    saveClient: "Save Client",
     activities: [
       "Software Development",
       "Graphic Design",
@@ -204,6 +241,22 @@ const translations = {
     saveError: "فشل حفظ الفاتورة.",
     deleteSuccess: "تم حذف الفاتورة.",
     deleteError: "فشل حذف الفاتورة.",
+    dashboard: "لوحة التحكم",
+    clients: "العملاء",
+    ledger: "دفتر الحسابات",
+    addClient: "إضافة عميل جديد",
+    clientName: "اسم العميل",
+    email: "البريد الإلكتروني",
+    phone: "الجوال",
+    address: "العنوان",
+    balance: "الرصيد",
+    transactions: "المعاملات",
+    noClients: "لا يوجد عملاء بعد.",
+    searchClients: "بحث في العملاء...",
+    totalReceivable: "إجمالي المستحقات",
+    recentInvoices: "آخر الفواتير",
+    businessOverview: "نظرة عامة على العمل",
+    saveClient: "حفظ العميل",
     activities: [
       "تطوير البرمجيات",
       "التصميم الجرافيكي",
@@ -229,6 +282,8 @@ interface InvoiceItem {
 
 interface InvoiceData {
   id?: string;
+  userId?: string;
+  contactId?: string;
   invoiceTitle: string;
   serviceProvider: string;
   clientName: string;
@@ -237,7 +292,51 @@ interface InvoiceData {
   logo: string | null;
   phoneNumber: string;
   items: InvoiceItem[];
+  totalAmount: number;
+  status: 'paid' | 'pending' | 'overdue';
   savedAt?: string;
+}
+
+interface Contact {
+  id?: string;
+  userId?: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  notes?: string;
+  totalBalance: number;
+  totalPaid: number;
+  createdAt?: any;
+}
+
+interface Payment {
+  id?: string;
+  userId?: string;
+  contactId: string;
+  invoiceId?: string;
+  amount: number;
+  method: 'cash' | 'bank' | 'card' | 'other';
+  date: any;
+  note?: string;
+}
+
+interface Expense {
+  id?: string;
+  userId?: string;
+  category: string;
+  amount: number;
+  date: any;
+  description: string;
+}
+
+interface Product {
+  id?: string;
+  userId?: string;
+  name: string;
+  quantity: number;
+  price: number;
+  cost: number;
 }
 
 // --- Utilities ---
@@ -311,12 +410,27 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
   const navigate = useNavigate();
   const [showHistory, setShowHistory] = useState(false);
   const [savedInvoices, setSavedInvoices] = useState<InvoiceData[]>([]);
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'invoices' | 'contacts' | 'payments' | 'expenses'>(() => (localStorage.getItem('gn_active_tab') as any) || 'dashboard');
+  const [showAddPayment, setShowAddPayment] = useState(false);
+  const [showAddExpense, setShowAddExpense] = useState(false);
+  const [newPaymentData, setNewPaymentData] = useState<Omit<Payment, 'id' | 'userId' | 'date'>>({ contactId: '', amount: 0, method: 'cash' });
+  const [newExpenseData, setNewExpenseData] = useState<Omit<Expense, 'id' | 'userId' | 'date'>>({ category: 'Rent', amount: 0, description: '' });
   const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [lastFirebaseError, setLastFirebaseError] = useState<string | null>(null);
+  const [showDebug, setShowDebug] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isSavingToFirestore, setIsSavingToFirestore] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [saveNameInput, setSaveNameInput] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showAddContact, setShowAddContact] = useState(false);
+  const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
+  const [newContactData, setNewContactData] = useState({ name: '', phone: '', email: '', address: '' });
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [activeSuggestionField, setActiveSuggestionField] = useState<string | null>(null);
   const [activeItemIndex, setActiveItemIndex] = useState<number | null>(null);
@@ -331,7 +445,9 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     customActivity: '',
     logo: null,
     phoneNumber: '',
-    items: [{ id: generateId(), description: '', price: 0 }]
+    items: [{ id: generateId(), description: '', price: 0 }],
+    totalAmount: 0,
+    status: 'pending'
   });
 
   const [isPreviewMode, setIsPreviewMode] = useState(false);
@@ -349,34 +465,52 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     }
   }, [lang]);
 
+  useEffect(() => {
+    localStorage.setItem('gn_active_tab', activeTab);
+  }, [activeTab]);
+
   // Firebase Auth and Firestore listener
   useEffect(() => {
+    console.log("[Auth] Setting up listener...");
     const unsubAuth = onAuthStateChanged(auth, (currentUser) => {
+      console.log("[Auth] State changed:", currentUser ? `User: ${currentUser.email} (${currentUser.uid})` : "No user");
       setUser(currentUser);
+      setAuthLoading(false);
     });
 
     return () => unsubAuth();
   }, []);
 
   useEffect(() => {
+    if (authLoading) return;
     if (!user) {
       const history = localStorage.getItem('gn_invoice_history');
       if (history) {
-        try {
-          setSavedInvoices(JSON.parse(history));
-        } catch (e) {
-          console.error("Failed to parse history", e);
-        }
-      } else {
-        setSavedInvoices([]);
-      }
+        try { setSavedInvoices(JSON.parse(history)); } catch (e) { console.error("Failed to parse history", e); }
+      } else { setSavedInvoices([]); }
+
+      const loadedContacts = localStorage.getItem('gn_contacts');
+      if (loadedContacts) {
+        try { setContacts(JSON.parse(loadedContacts)); } catch (e) { console.error("Failed to parse contacts", e); }
+      } else { setContacts([]); }
+
+      const loadedPayments = localStorage.getItem('gn_payments');
+      if (loadedPayments) {
+        try { setPayments(JSON.parse(loadedPayments)); } catch (e) { console.error("Failed to parse payments", e); }
+      } else { setPayments([]); }
+
+      const loadedExpenses = localStorage.getItem('gn_expenses');
+      if (loadedExpenses) {
+        try { setExpenses(JSON.parse(loadedExpenses)); } catch (e) { console.error("Failed to parse expenses", e); }
+      } else { setExpenses([]); }
+
       return;
     }
 
     const q = query(
       collection(db, "invoices"),
-      where("userId", "==", user.uid),
-      orderBy("savedAt", "desc")
+      where("userId", "==", user.uid)
+      // Sorting in React to avoid missing index errors
     );
 
     const unsubFirestore = onSnapshot(q, (snapshot) => {
@@ -384,11 +518,88 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
         ...doc.data(),
         id: doc.id
       })) as InvoiceData[];
-      setSavedInvoices(docs);
+      
+      // Sort manually by savedAt desc
+      const sortedDocs = docs.sort((a, b) => {
+        const dateA = new Date(a.savedAt || 0).getTime();
+        const dateB = new Date(b.savedAt || 0).getTime();
+        return dateB - dateA;
+      });
+      
+      setSavedInvoices(sortedDocs);
+    }, (error) => {
+      console.error("Firestore error:", error);
+      setLastFirebaseError(error.message);
+      if (error.code === 'permission-denied') {
+        console.warn("Permission denied - check your security rules");
+      }
     });
 
-    return () => unsubFirestore();
-  }, [user]);
+    const clientsQuery = query(
+      collection(db, "clients"),
+      where("userId", "==", user.uid)
+      // Removed orderBy to ensure it works even without index
+    );
+
+    const unsubContacts = onSnapshot(clientsQuery, (snapshot) => {
+      console.log(`[Firestore] onSnapshot triggered for "clients"`);
+      console.log(`[Firestore] User UID: ${user.uid}`);
+      console.log(`[Firestore] Docs found: ${snapshot.docs.length}`);
+      
+      const docs = snapshot.docs.map(doc => {
+        const data = doc.data();
+        console.log(`[Firestore] Client Doc:`, doc.id, data);
+        return {
+          ...data,
+          id: doc.id
+        };
+      }) as Contact[];
+      
+      setContacts(docs);
+    }, (error) => {
+      console.error("Clients listener error:", error);
+      setLastFirebaseError(error.message);
+    });
+
+    const paymentsQuery = query(collection(db, "payments"), where("userId", "==", user.uid));
+    const unsubPayments = onSnapshot(paymentsQuery, (snapshot) => {
+      setPayments(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as Payment[]);
+    }, (error) => console.error("Payments listener error:", error));
+
+    const expensesQuery = query(collection(db, "expenses"), where("userId", "==", user.uid));
+    const unsubExpenses = onSnapshot(expensesQuery, (snapshot) => {
+      setExpenses(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as Expense[]);
+    }, (error) => console.error("Expenses listener error:", error));
+
+    const productsQuery = query(collection(db, "products"), where("userId", "==", user.uid));
+    const unsubProducts = onSnapshot(productsQuery, (snapshot) => {
+      setProducts(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as Product[]);
+    }, (error) => console.error("Products listener error:", error));
+
+    return () => {
+      unsubFirestore();
+      unsubContacts();
+      unsubPayments();
+      unsubExpenses();
+      unsubProducts();
+    };
+  }, [user, authLoading]);
+
+  // Persist Builder State for guest
+  useEffect(() => {
+    if (!authLoading && !user) {
+      localStorage.setItem('gn_builder_data', JSON.stringify(invoiceData));
+    }
+  }, [invoiceData, user, authLoading]);
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      const savedBuilderData = localStorage.getItem('gn_builder_data');
+      if (savedBuilderData) {
+        try { setInvoiceData(JSON.parse(savedBuilderData)); } catch(e) {}
+      }
+    }
+  }, [user, authLoading]);
 
   const handleLogin = async () => {
     setIsLoggingIn(true);
@@ -469,10 +680,11 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     const finalTitle = saveNameInput.trim() || (lang === 'ar' ? translations.ar.invoiceTitleDefault : translations.en.invoiceTitleDefault);
     const currentId = invoiceData.id || generateId();
 
-    const invoiceToSave = {
+    const invoiceToSave: InvoiceData = {
       ...invoiceData,
       id: currentId,
       invoiceTitle: finalTitle,
+      totalAmount: total,
       savedAt: new Date().toISOString()
     };
 
@@ -492,7 +704,21 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
         localStorage.setItem('gn_invoice_history', JSON.stringify(updated));
         return updated;
       });
-      // Show mini toast or simple state-based alert instead of blocking window.alert
+
+      // Update contact balance for guest
+      if (invoiceData.contactId && invoiceToSave.status !== 'paid') {
+        setContacts(prev => {
+          const updated = prev.map(c => {
+            if (c.id === invoiceData.contactId) {
+              return { ...c, totalBalance: (c.totalBalance || 0) + total };
+            }
+            return c;
+          });
+          localStorage.setItem('gn_contacts', JSON.stringify(updated));
+          return updated;
+        });
+      }
+      
       return;
     }
 
@@ -513,6 +739,18 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
       } else {
         const docRef = await addDoc(collection(db, "invoices"), cleanedData);
         setInvoiceData(prev => ({ ...prev, id: docRef.id }));
+        
+        // Update contact balance if associated
+        if (invoiceData.contactId && invoiceToSave.status !== 'paid') {
+          const contactRef = doc(db, "clients", invoiceData.contactId);
+          const contactSnap = await getDoc(contactRef);
+          if (contactSnap.exists()) {
+            const currentBalance = contactSnap.data().totalBalance || 0;
+            await updateDoc(contactRef, {
+              totalBalance: currentBalance + total
+            });
+          }
+        }
       }
     } catch (error) {
       console.error("Firestore save error:", error);
@@ -545,6 +783,136 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
       await deleteDoc(doc(db, "invoices", id));
     } catch (error) {
       console.error("Firestore delete error:", error);
+    }
+  };
+
+  const handleAddContact = async (contactData: Omit<Contact, 'id' | 'userId' | 'totalBalance' | 'totalPaid' | 'createdAt'>) => {
+    if (!user) {
+      const newContact: Contact = {
+        ...contactData,
+        id: generateId(),
+        totalBalance: 0,
+        totalPaid: 0,
+        createdAt: new Date().toISOString()
+      };
+      setContacts(prev => {
+        const updated = [newContact, ...prev];
+        localStorage.setItem('gn_contacts', JSON.stringify(updated));
+        return updated;
+      });
+      return;
+    }
+    
+    try {
+      console.log(`[Firestore] Adding contact for UID: ${user.uid}`);
+      const newContact: Omit<Contact, 'id'> = {
+        ...contactData,
+        userId: user.uid,
+        totalBalance: 0,
+        totalPaid: 0,
+        createdAt: serverTimestamp()
+      };
+      const docRef = await addDoc(collection(db, "clients"), newContact);
+      console.log(`[Firestore] Contact added with ID: ${docRef.id}`);
+    } catch (err) {
+      console.error("Error adding contact:", err);
+      setLastFirebaseError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const handleAddPayment = async (data: any) => {
+    if (!data.contactId || data.amount <= 0) return;
+
+    if (!user) {
+      const payment: Payment = {
+        id: generateId(),
+        ...data,
+        date: new Date().toISOString()
+      };
+      
+      setPayments(prev => {
+        const updated = [payment, ...prev];
+        localStorage.setItem('gn_payments', JSON.stringify(updated));
+        return updated;
+      });
+
+      setContacts(prev => {
+        const updated = prev.map(c => {
+          if (c.id === data.contactId) {
+            return {
+              ...c,
+              totalBalance: Math.max(0, (c.totalBalance || 0) - parseFloat(data.amount)),
+              totalPaid: (c.totalPaid || 0) + parseFloat(data.amount)
+            };
+          }
+          return c;
+        });
+        localStorage.setItem('gn_contacts', JSON.stringify(updated));
+        return updated;
+      });
+
+      confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 }, colors: ['#10B981', '#3B82F6', '#F59E0B'] });
+      return;
+    }
+
+    try {
+      const payment: Omit<Payment, 'id'> = {
+        userId: user.uid,
+        ...data,
+        date: serverTimestamp()
+      };
+      await addDoc(collection(db, "payments"), payment);
+      
+      // Update contact balance
+      const contactRef = doc(db, "clients", data.contactId);
+      const contactSnap = await getDoc(contactRef);
+      if (contactSnap.exists()) {
+        const currentBalance = contactSnap.data().totalBalance || 0;
+        const currentPaid = contactSnap.data().totalPaid || 0;
+        await updateDoc(contactRef, {
+          totalBalance: Math.max(0, currentBalance - parseFloat(data.amount)),
+          totalPaid: currentPaid + parseFloat(data.amount)
+        });
+      }
+      confetti({
+        particleCount: 150,
+        spread: 70,
+        origin: { y: 0.6 },
+        colors: ['#10B981', '#3B82F6', '#F59E0B']
+      });
+    } catch (error) {
+      console.error("Error adding payment:", error);
+    }
+  };
+
+  const handleAddExpense = async (data: any) => {
+    if (data.amount <= 0) return;
+
+    if (!user) {
+      const expense: Expense = {
+        id: generateId(),
+        ...data,
+        amount: parseFloat(data.amount),
+        date: new Date().toISOString()
+      };
+      setExpenses(prev => {
+        const updated = [expense, ...prev];
+        localStorage.setItem('gn_expenses', JSON.stringify(updated));
+        return updated;
+      });
+      return;
+    }
+
+    try {
+      const expense: Omit<Expense, 'id'> = {
+        userId: user.uid,
+        ...data,
+        amount: parseFloat(data.amount),
+        date: serverTimestamp()
+      };
+      await addDoc(collection(db, "expenses"), expense);
+    } catch (error) {
+      console.error("Error adding expense:", error);
     }
   };
 
@@ -744,6 +1112,406 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     ? invoiceData.customActivity 
     : t.activities[invoiceData.activityIndex];
 
+  const TabButton = ({ children, icon, active, onClick }: { children: React.ReactNode, icon: React.ReactNode, active: boolean, onClick: () => void }) => (
+    <button 
+      onClick={onClick}
+      className={cn(
+        "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all duration-300",
+        active 
+          ? "bg-white dark:bg-[#1A1A1A] text-[#1A1A1A] dark:text-white shadow-sm" 
+          : "text-[#666666] dark:text-[#94A3B8] hover:bg-white/50 dark:hover:bg-white/5"
+      )}
+    >
+      {icon}
+      <span className="hidden md:inline">{children}</span>
+    </button>
+  );
+
+  const ContactsView = () => {
+    const selectedContact = contacts.find(c => c.id === selectedContactId);
+
+    if (selectedContactId && selectedContact) {
+      const contactInvoices = savedInvoices.filter(i => i.contactId === selectedContactId);
+      const totalInvoiced = contactInvoices.reduce((sum, i) => sum + i.totalAmount, 0);
+      const totalPaid = selectedContact.totalPaid || 0;
+      const debt = selectedContact.totalBalance || 0;
+
+      return (
+        <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="space-y-8">
+           <button onClick={() => setSelectedContactId(null)} className="flex items-center gap-2 text-sm font-bold text-blue-600 hover:gap-3 transition-all">
+             <ArrowLeft size={16} /> {lang === 'en' ? 'Back to Clients' : 'العودة للعملاء'}
+           </button>
+
+           <div className="bg-white dark:bg-white/5 border-2 border-[#1A1A1A]/5 dark:border-white/10 p-8 rounded-[40px] shadow-sm">
+             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
+               <div className="flex items-center gap-6">
+                 <div className="w-20 h-20 rounded-[24px] bg-blue-500/10 flex items-center justify-center text-blue-500 font-black text-3xl">
+                   {selectedContact.name[0]}
+                 </div>
+                 <div>
+                   <h2 className="text-3xl font-black">{selectedContact.name}</h2>
+                   <div className="flex items-center gap-4 mt-2 text-[#666666] dark:text-[#94A3B8] font-bold">
+                     <span className="flex items-center gap-1"><Phone size={14} /> {selectedContact.phone}</span>
+                     {selectedContact.email && <span className="flex items-center gap-1 text-xs"><Briefcase size={14} /> {selectedContact.email}</span>}
+                   </div>
+                 </div>
+               </div>
+               
+               <div className="flex gap-4">
+                 <div className="bg-slate-50 dark:bg-white/5 p-4 px-6 rounded-2xl border border-slate-100 dark:border-white/5">
+                   <p className="text-[10px] font-black uppercase text-[#999999] mb-1">{lang === 'en' ? 'Remaining Debt' : 'المديونية المتبقية'}</p>
+                   <p className={cn("text-2xl font-black", debt > 0 ? "text-red-500" : "text-emerald-500")}>
+                     {t.currencySymbol}{debt.toLocaleString()}
+                   </p>
+                 </div>
+               </div>
+             </div>
+
+             <div className="grid gap-6 md:grid-cols-3 mb-12">
+                <div className="p-6 rounded-3xl bg-blue-50/50 dark:bg-blue-500/5 border border-blue-100 dark:border-blue-500/10">
+                  <p className="text-xs font-bold text-blue-600/60 uppercase mb-2">{lang === 'en' ? 'Total Invoiced' : 'إجمالي الفواتير'}</p>
+                  <p className="text-2xl font-black text-blue-600">{t.currencySymbol}{totalInvoiced.toLocaleString()}</p>
+                </div>
+                <div className="p-6 rounded-3xl bg-emerald-50/50 dark:bg-emerald-500/5 border border-emerald-100 dark:border-emerald-500/10">
+                  <p className="text-xs font-bold text-emerald-600/60 uppercase mb-2">{lang === 'en' ? 'Total Paid' : 'إجمالي المدفوع'}</p>
+                  <p className="text-2xl font-black text-emerald-600">{t.currencySymbol}{totalPaid.toLocaleString()}</p>
+                </div>
+                <div className="p-6 rounded-3xl bg-slate-50 dark:bg-white/5 border border-slate-100 dark:border-white/5">
+                  <p className="text-xs font-bold text-slate-400 uppercase mb-2">{lang === 'en' ? 'Transactions' : 'عدد المعاملات'}</p>
+                  <p className="text-2xl font-black">{contactInvoices.length}</p>
+                </div>
+             </div>
+
+             <h3 className="text-xl font-black mb-6">{lang === 'en' ? 'Invoice History' : 'سجل الفواتير'}</h3>
+             <div className="space-y-3">
+               {contactInvoices.map(invoice => (
+                 <div key={invoice.id} className="flex items-center justify-between p-5 rounded-2xl bg-[#F9F9F9] dark:bg-white/5 border border-transparent hover:border-blue-500/30 transition-all">
+                    <div className="flex items-center gap-4">
+                      <div className={cn("p-3 rounded-xl", invoice.status === 'paid' ? "bg-emerald-100 text-emerald-600" : "bg-amber-100 text-amber-600")}>
+                        <FileText size={20} />
+                      </div>
+                      <div>
+                        <p className="font-bold">{invoice.invoiceTitle || t.invoiceTitleDefault}</p>
+                        <p className="text-xs text-[#999999]">{invoice.savedAt ? new Date(invoice.savedAt).toLocaleDateString() : '---'}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-black text-lg">{t.currencySymbol}{invoice.totalAmount.toLocaleString()}</p>
+                      <p className={cn("text-[10px] font-black uppercase", invoice.status === 'paid' ? "text-emerald-500" : "text-amber-500")}>
+                        {invoice.status === 'paid' ? (lang === 'en' ? 'Paid' : 'مدفوعة') : (lang === 'en' ? 'Pending' : 'قيد الانتظار')}
+                      </p>
+                    </div>
+                 </div>
+               ))}
+               {contactInvoices.length === 0 && (
+                 <div className="py-20 text-center border-2 border-dashed border-slate-100 dark:border-white/5 rounded-3xl">
+                   <p className="text-[#999999] font-bold">{lang === 'en' ? 'No invoices for this client' : 'لا يوجد فواتير لهذا العميل'}</p>
+                 </div>
+               )}
+             </div>
+           </div>
+        </motion.div>
+      );
+    }
+
+    return (
+      <motion.div 
+         key="contacts"
+         initial={{ opacity: 0 }}
+         animate={{ opacity: 1 }}
+         className="space-y-8"
+      >
+         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+           <div>
+             <h2 className="text-3xl font-black tracking-tight">{t.clients}</h2>
+             <p className="text-[#666666] dark:text-[#94A3B8]">{lang === 'en' ? 'Manage your customer accounts' : 'إدارة حسابات عملائك'}</p>
+           </div>
+           <Button onClick={() => setShowAddContact(true)} className="gap-2">
+             <UserPlus size={18} /> {t.addClient}
+           </Button>
+         </div>
+
+         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+           {contacts.map(contact => (
+             <div 
+               key={contact.id} 
+               onClick={() => setSelectedContactId(contact.id || null)}
+               className="bg-white dark:bg-white/5 border-2 border-[#1A1A1A]/5 dark:border-white/10 p-6 rounded-2xl hover:border-blue-500 transition-all group relative overflow-hidden cursor-pointer"
+             >
+               <div className="flex items-center gap-4 mb-4">
+                 <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-500 font-black text-xl">
+                   {contact.name[0]}
+                 </div>
+                 <div className="flex-1">
+                   <h3 className="font-bold text-lg leading-none mb-1">{contact.name}</h3>
+                   <p className="text-xs text-[#666666] dark:text-[#94A3B8]">{contact.phone}</p>
+                 </div>
+                 <ChevronRight size={18} className="text-[#999999] opacity-0 group-hover:opacity-100 transition-all" />
+               </div>
+               <div className="pt-4 border-t border-[#1A1A1A]/5 dark:border-white/5 flex items-center justify-between">
+                  <span className="text-xs font-bold text-[#666666] uppercase tracking-wider">{lang === 'en' ? 'Debt' : 'المديونية'}</span>
+                  <span className={cn("font-black text-lg", contact.totalBalance > 0 ? "text-red-500" : "text-emerald-500")}>
+                    {t.currencySymbol}{(contact.totalBalance || 0).toLocaleString()}
+                  </span>
+               </div>
+             </div>
+           ))}
+           {contacts.length === 0 && (
+             <div className="md:col-span-2 lg:col-span-3 py-20 text-center">
+               <div className="w-20 h-20 bg-slate-100 dark:bg-white/5 rounded-full flex items-center justify-center mx-auto mb-6">
+                 <Users size={32} className="text-[#999999]" />
+               </div>
+               <h3 className="text-xl font-bold mb-2">{t.noClients}</h3>
+               <Button variant="outline" onClick={() => setShowAddContact(true)}>{t.addClient}</Button>
+             </div>
+           )}
+         </div>
+      </motion.div>
+    );
+  };
+
+  const DashboardView = () => {
+    // Generate chart data from payments
+    const chartData = payments
+      .sort((a, b) => {
+        const dateA = a.date?.toDate ? a.date.toDate().getTime() : new Date(a.date).getTime();
+        const dateB = b.date?.toDate ? b.date.toDate().getTime() : new Date(b.date).getTime();
+        return dateA - dateB;
+      })
+      .reduce((acc: any[], p) => {
+        const date = p.date?.toDate ? p.date.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : new Date(p.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        const existing = acc.find(item => item.date === date);
+        if (existing) {
+          existing.amount += p.amount;
+        } else {
+          acc.push({ date, amount: p.amount });
+        }
+        return acc;
+      }, [])
+      .slice(-7);
+
+    const totalRevenue = payments.reduce((sum, p) => sum + p.amount, 0);
+    const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
+    const netProfit = totalRevenue - totalExpenses;
+
+    return (
+      <motion.div 
+         key="dashboard"
+         initial={{ opacity: 0 }}
+         animate={{ opacity: 1 }}
+         className="space-y-8"
+      >
+         <div className="grid gap-6 md:grid-cols-4">
+           <div className="bg-[#1A1A1A] text-white p-6 rounded-[32px] relative overflow-hidden flex flex-col justify-between min-h-[140px]">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl" />
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/50">{lang === 'en' ? 'Net Profit' : 'صافي الربح'}</p>
+              <h3 className="text-3xl font-black">{t.currencySymbol}{netProfit.toLocaleString()}</h3>
+              <div className="mt-2 flex items-center gap-1 text-[10px] font-bold text-emerald-400">
+                <ArrowUpRight size={14} />
+                <span>{lang === 'en' ? 'Healthy Margin' : 'هامش ربح جيد'}</span>
+              </div>
+           </div>
+           
+           <div className="bg-white dark:bg-white/5 border-2 border-[#1A1A1A]/5 dark:border-white/10 p-6 rounded-[32px] flex flex-col justify-between">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#666666] dark:text-[#94A3B8]">{t.totalReceivable}</p>
+              <h3 className="text-3xl font-black text-red-500">{t.currencySymbol}{contacts.reduce((sum, c) => sum + (c.totalBalance || 0), 0).toLocaleString()}</h3>
+              <p className="text-[10px] font-bold text-[#999999]">{contacts.filter(c => c.totalBalance > 0).length} {lang === 'en' ? 'unpaid accounts' : 'حسابات غير مدفوعة'}</p>
+           </div>
+
+           <div className="bg-white dark:bg-white/5 border-2 border-[#1A1A1A]/5 dark:border-white/10 p-6 rounded-[32px] flex flex-col justify-between">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#666666] dark:text-[#94A3B8]">{lang === 'en' ? 'Total Expenses' : 'إجمالي المصاريف'}</p>
+              <h3 className="text-3xl font-black">{t.currencySymbol}{totalExpenses.toLocaleString()}</h3>
+              <p className="text-[10px] font-bold text-[#999999]">{expenses.length} {lang === 'en' ? 'recorded items' : 'بند مسجل'}</p>
+           </div>
+
+           <div className="bg-white dark:bg-white/5 border-2 border-[#1A1A1A]/5 dark:border-white/10 p-6 rounded-[32px] flex flex-col justify-between">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#666666] dark:text-[#94A3B8]">{lang === 'en' ? 'Pending Invoices' : 'الفواتير المعلقة'}</p>
+              <h3 className="text-3xl font-black">{savedInvoices.filter(i => i.status === 'pending').length}</h3>
+              <p className="text-[10px] font-bold text-[#999999]">{lang === 'en' ? 'Action required' : 'تحتاج للمتابعة'}</p>
+           </div>
+         </div>
+
+         <div className="grid gap-6 lg:grid-cols-3">
+           <div className="lg:col-span-2 bg-white dark:bg-white/5 border-2 border-[#1A1A1A]/5 dark:border-white/10 p-8 rounded-[40px]">
+              <div className="flex items-center justify-between mb-8">
+                <h3 className="text-xl font-black">{lang === 'en' ? 'Revenue Flow' : 'تدفق الإيرادات'}</h3>
+                <div className="flex items-center gap-4 text-xs font-bold text-[#666666]">
+                  <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-blue-600" /> {lang === 'en' ? 'Payments' : 'التحصيلات'}</div>
+                </div>
+              </div>
+              <div className="h-[250px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartData}>
+                    <defs>
+                      <linearGradient id="colorAmount" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#2563eb" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="#2563eb" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" opacity={0.1} />
+                    <XAxis 
+                      dataKey="date" 
+                      axisLine={false} 
+                      tickLine={false} 
+                      tick={{ fontSize: 10, fill: '#94A3B8' }}
+                      dy={10}
+                    />
+                    <YAxis hide />
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: '#1A1A1A', border: 'none', borderRadius: '12px', color: '#fff' }}
+                      itemStyle={{ color: '#fff' }}
+                    />
+                    <Area type="monotone" dataKey="amount" stroke="#2563eb" strokeWidth={4} fillOpacity={1} fill="url(#colorAmount)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+           </div>
+
+           <div className="bg-white dark:bg-white/5 border-2 border-[#1A1A1A]/5 dark:border-white/10 p-8 rounded-[40px]">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-black">{lang === 'en' ? 'Quick Actions' : 'إجراءات سريعة'}</h3>
+              </div>
+              <div className="space-y-3">
+                <button onClick={() => { setActiveTab('invoices'); setIsPreviewMode(false); }} className="w-full p-4 rounded-2xl bg-blue-50 dark:bg-blue-500/10 text-blue-600 font-bold flex items-center justify-between hover:scale-[1.02] transition-all">
+                  <div className="flex items-center gap-3">
+                    <FileText size={20} />
+                    <span>{lang === 'en' ? 'Create Invoice' : 'فاتورة جديدة'}</span>
+                  </div>
+                  <ChevronRight size={18} />
+                </button>
+                <button onClick={() => setShowAddContact(true)} className="w-full p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 font-bold flex items-center justify-between hover:scale-[1.02] transition-all">
+                  <div className="flex items-center gap-3">
+                    <UserPlus size={20} />
+                    <span>{lang === 'en' ? 'Add Client' : 'إضافة عميل'}</span>
+                  </div>
+                  <ChevronRight size={18} />
+                </button>
+                <button onClick={() => setActiveTab('expenses')} className="w-full p-4 rounded-2xl bg-red-50 dark:bg-red-500/10 text-red-600 font-bold flex items-center justify-between hover:scale-[1.02] transition-all">
+                  <div className="flex items-center gap-3">
+                    <ArrowDownLeft size={20} />
+                    <span>{lang === 'en' ? 'Add Expense' : 'إضافة مصروف'}</span>
+                  </div>
+                  <ChevronRight size={18} />
+                </button>
+                <button onClick={() => setActiveTab('payments')} className="w-full p-4 rounded-2xl bg-orange-50 dark:bg-orange-500/10 text-orange-600 font-bold flex items-center justify-between hover:scale-[1.02] transition-all">
+                  <div className="flex items-center gap-3">
+                    <Wallet size={20} />
+                    <span>{lang === 'en' ? 'Record Payment' : 'تسجيل دفعة'}</span>
+                  </div>
+                  <ChevronRight size={18} />
+                </button>
+              </div>
+           </div>
+         </div>
+      </motion.div>
+    );
+  };
+
+  const PaymentsView = () => (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-3xl font-black">{lang === 'en' ? 'Payments' : 'المدفوعات'}</h2>
+          <p className="text-[#666666] dark:text-[#94A3B8]">{lang === 'en' ? 'Log of incoming revenue' : 'سجل الإيرادات الواردة'}</p>
+        </div>
+        <Button onClick={() => setShowAddPayment(true)} className="gap-2">
+          <Wallet size={18} /> {lang === 'en' ? 'Record Payment' : 'تسجيل دفعة'}
+        </Button>
+      </div>
+
+      <div className="bg-white dark:bg-white/5 border border-[#1A1A1A]/5 dark:border-white/10 rounded-[32px] overflow-hidden">
+        <table className="w-full text-left">
+          <thead>
+            <tr className="border-b border-[#1A1A1A]/5 dark:border-white/5">
+              <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-[#999999]">{lang === 'en' ? 'Date' : 'التاريخ'}</th>
+              <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-[#999999]">{lang === 'en' ? 'Client' : 'العميل'}</th>
+              <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-[#999999]">{lang === 'en' ? 'Method' : 'الطريقة'}</th>
+              <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-[#999999] text-right">{lang === 'en' ? 'Amount' : 'المبلغ'}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {payments.map(p => {
+              const contact = contacts.find(c => c.id === p.contactId);
+              return (
+                <tr key={p.id} className="border-b border-[#1A1A1A]/5 dark:border-white/5 hover:bg-slate-50 dark:hover:bg-white/5">
+                  <td className="px-6 py-4 font-bold text-sm">
+                    {p.date?.toDate ? p.date.toDate().toLocaleDateString() : new Date(p.date).toLocaleDateString()}
+                  </td>
+                  <td className="px-6 py-4 font-bold text-sm">{contact?.name || 'Unknown'}</td>
+                  <td className="px-6 py-4 font-bold text-xs uppercase tracking-widest text-blue-600">{p.method}</td>
+                  <td className="px-6 py-4 font-black text-emerald-500 text-right">{t.currencySymbol}{p.amount.toLocaleString()}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </motion.div>
+  );
+
+  const ExpensesView = () => (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-3xl font-black">{lang === 'en' ? 'Expenses' : 'المصاريف'}</h2>
+          <p className="text-[#666666] dark:text-[#94A3B8]">{lang === 'en' ? 'Track your business spending' : 'تتبع نفقات عملك'}</p>
+        </div>
+        <Button onClick={() => setShowAddExpense(true)} className="gap-2 bg-red-600 hover:bg-red-700">
+          <ArrowDownLeft size={18} /> {lang === 'en' ? 'Add Expense' : 'إضافة مصروف'}
+        </Button>
+      </div>
+
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        {expenses.map(e => (
+          <div key={e.id} className="bg-white dark:bg-white/5 border-2 border-[#1A1A1A]/5 dark:border-white/10 p-6 rounded-3xl relative">
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-[10px] font-black uppercase tracking-widest bg-red-500/10 text-red-500 px-3 py-1 rounded-full">{e.category}</span>
+              <span className="text-xs font-bold text-[#999999]">
+                {e.date?.toDate ? e.date.toDate().toLocaleDateString() : new Date(e.date).toLocaleDateString()}
+              </span>
+            </div>
+            <h4 className="font-bold text-lg mb-1">{e.description}</h4>
+            <p className="text-2xl font-black">{t.currencySymbol}{e.amount.toLocaleString()}</p>
+          </div>
+        ))}
+      </div>
+    </motion.div>
+  );
+
+  const isAr = lang === 'ar';
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-[#060B16]">
+        <div className="flex flex-col items-center gap-6">
+          <div className="relative">
+            <div className="h-16 w-16 animate-spin rounded-full border-4 border-blue-600/20 border-t-blue-600" />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="h-2 w-2 rounded-full bg-blue-600 animate-pulse" />
+            </div>
+          </div>
+          <p className="font-black text-blue-600 tracking-widest text-sm animate-pulse uppercase">
+            {isAr ? 'جاري التحقق من الهوية...' : 'Authenticating...'}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const DebugPanel = () => (
+    <div className="fixed bottom-4 right-4 z-[9999] max-w-xs bg-black/90 text-[10px] text-white p-4 rounded-2xl border border-white/20 font-mono shadow-2xl backdrop-blur-xl">
+      <div className="flex justify-between items-center mb-2">
+        <span className="font-black text-blue-400">DEBUG PANEL</span>
+        <button onClick={() => setShowDebug(false)} className="hover:text-red-500">CLOSE</button>
+      </div>
+      <p className="mb-1"><span className="text-gray-400">EMAIL:</span> {user?.email || 'Guest'}</p>
+      <p className="mb-1 overflow-hidden text-ellipsis"><span className="text-gray-400">UID:</span> {user?.uid || 'N/A'}</p>
+      <p className="mb-1"><span className="text-gray-400">PATH:</span> clients</p>
+      <p className="mb-1"><span className="text-gray-400">COUNT:</span> {contacts.length}</p>
+      {lastFirebaseError && <p className="mt-2 text-red-500 border-t border-red-500/30 pt-1">ERR: {lastFirebaseError}</p>}
+    </div>
+  );
+
   return (
     <div 
       className={cn(
@@ -752,6 +1520,26 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
       )} 
       dir={lang === 'ar' ? 'rtl' : 'ltr'}
     >
+      {showDebug && <DebugPanel />}
+      <button 
+        onDoubleClick={() => setShowDebug(true)} 
+        className="fixed bottom-2 left-2 z-[9999] opacity-0 hover:opacity-100 bg-black/20 text-[8px] text-white p-1 rounded-sm cursor-pointer"
+      >
+        DEV DBG
+      </button>
+      {/* Persistence Notice */}
+      {!user && (
+        <div className="no-print bg-amber-50 dark:bg-amber-900/10 border-b border-amber-200 dark:border-amber-900/10 p-2 text-center">
+          <p className="text-[10px] md:text-xs font-bold text-amber-700 dark:text-amber-400 flex items-center justify-center gap-2">
+            <CloudOff size={14} />
+            {lang === 'en' 
+              ? 'Guest Mode: Data saved only in this browser. Login to sync with cloud.' 
+              : 'وضع الزائر: البيانات محفوظة في هذا المتصفح فقط. سجل دخولك للمزامنة السحابية.'}
+            <button onClick={() => navigate('/login')} className="underline ml-1 cursor-pointer font-black">{t.login}</button>
+          </p>
+        </div>
+      )}
+
       {/* Header */}
       <header className="no-print sticky top-0 z-50 w-full border-b border-[#F0F0F0] dark:border-white/5 bg-white/80 dark:bg-[#060B16]/80 backdrop-blur-md">
         <div className="container mx-auto flex h-16 items-center justify-between px-4 md:px-8">
@@ -759,82 +1547,60 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#1A1A1A] dark:bg-[#E2E8F0] text-white dark:text-[#060B16] shadow-lg shadow-[#1A1A1A]/10">
               <FileText size={24} strokeWidth={2.5} />
             </div>
-            <span className="text-xl font-bold tracking-tight text-[#1A1A1A] dark:text-[#E2E8F0]">{t.title}</span>
+            <span className="text-xl font-bold tracking-tight text-[#1A1A1A] dark:text-[#E2E8F0] hidden sm:inline-block">{t.title}</span>
           </div>
+
+          <nav className="flex items-center gap-1 bg-slate-100/50 dark:bg-white/5 p-1 rounded-xl">
+            <TabButton icon={<LayoutDashboard size={18} />} active={activeTab === 'dashboard'} onClick={() => { setActiveTab('dashboard'); setIsPreviewMode(false); }}>{t.dashboard}</TabButton>
+            <TabButton icon={<Users size={18} />} active={activeTab === 'contacts'} onClick={() => { setActiveTab('contacts'); setIsPreviewMode(false); }}>{t.clients}</TabButton>
+            <TabButton icon={<Wallet size={18} />} active={activeTab === 'payments'} onClick={() => { setActiveTab('payments'); setIsPreviewMode(false); }}>{lang === 'en' ? 'Payments' : 'المدفوعات'}</TabButton>
+            <TabButton icon={<ArrowDownLeft size={18} />} active={activeTab === 'expenses'} onClick={() => { setActiveTab('expenses'); setIsPreviewMode(false); }}>{lang === 'en' ? 'Expenses' : 'المصاريف'}</TabButton>
+            <TabButton icon={<Plus size={18} />} active={activeTab === 'invoices'} onClick={() => {
+              setActiveTab('invoices');
+              setIsPreviewMode(false);
+            }}>{t.invoice}</TabButton>
+          </nav>
           
           <div className="flex items-center gap-2 sm:gap-4">
-            <div className="flex items-center gap-1 border-r border-[#F0F0F0] dark:border-white/5 pr-2 sm:pr-4 mr-2 sm:mr-4">
-              <Button variant="ghost" size="icon" onClick={() => setShowHistory(true)} className="h-12 w-12 rounded-full">
-                <History size={26} />
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="icon" onClick={() => setShowDebug(!showDebug)} className="h-10 w-10 rounded-full text-blue-500">
+                <Settings size={22} />
               </Button>
-              <Button variant="ghost" size="icon" onClick={() => setIsDarkMode(!isDarkMode)} className="h-12 w-12 rounded-full">
-                {isDarkMode ? <Sun size={26} /> : <Moon size={26} />}
+              <Button variant="ghost" size="icon" onClick={() => setIsDarkMode(!isDarkMode)} className="h-10 w-10 rounded-full">
+                {isDarkMode ? <Sun size={22} /> : <Moon size={22} />}
               </Button>
-              <Button variant="ghost" size="icon" onClick={() => setLang(lang === 'en' ? 'ar' : 'en')} className="h-12 w-12 rounded-full">
-                <Languages size={26} />
+              <Button variant="ghost" size="icon" onClick={() => setLang(lang === 'en' ? 'ar' : 'en')} className="h-10 w-10 rounded-full">
+                <Languages size={22} />
               </Button>
             </div>
 
-            {isPreviewMode ? (
-              <Button variant="ghost" onClick={() => setIsPreviewMode(false)} className="hidden sm:flex gap-2">
-                <ArrowLeft size={20} className={lang === 'ar' ? 'rotate-180' : ''} /> {t.editForm}
-              </Button>
-            ) : (
-              <Button variant="ghost" onClick={() => {
-                if(confirm(t.resetConfirm)) {
-                  setInvoiceData({
-                    invoiceTitle: t.invoiceTitleDefault,
-                    serviceProvider: '',
-                    clientName: '',
-                    activityIndex: 0,
-                    customActivity: '',
-                    logo: null,
-                    phoneNumber: '',
-                    items: [{ id: generateId(), description: '', price: 0 }]
-                  });
-                }
-              }} className="hidden sm:flex gap-2 text-[#999999]">
-                {t.reset}
-              </Button>
-            )}
-            <Button variant="outline" className="hidden sm:flex">{t.support}</Button>
-            
-            {user ? (
-              <div className="flex items-center gap-3 ml-2 border-l border-[#F0F0F0] dark:border-white/5 pl-4">
-                <div className="hidden md:block text-right">
-                  <p className="text-xs font-bold text-[#1A1A1A] dark:text-[#E2E8F0] leading-none mb-1">{user.displayName}</p>
-                  <p className="text-[10px] text-[#666666] dark:text-[#94A3B8] leading-none">{user.email}</p>
+            {user && (
+              <div className="hidden md:flex items-center gap-3 ml-2 border-l border-[#F0F0F0] dark:border-white/5 pl-4">
+                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 text-[10px] font-bold">
+                  <CheckCircle2 size={12} />
+                  {lang === 'en' ? 'Synced' : 'متصل'}
                 </div>
                 {user.photoURL && (
                   <img 
                     src={user.photoURL} 
-                    alt="User Profile" 
-                    className="h-9 w-9 rounded-full border border-[#1A1A1A] dark:border-white/20"
+                    alt="User" 
+                    className="h-8 w-8 rounded-full border border-[#1A1A1A] dark:border-white/20"
                     referrerPolicy="no-referrer"
                   />
                 )}
-                <Button variant="ghost" size="sm" onClick={handleLogout} className="text-xs font-bold">
+                <Button variant="ghost" size="sm" onClick={handleLogout} className="text-[10px] font-black uppercase tracking-wider text-red-500">
                   {t.logout}
                 </Button>
               </div>
-            ) : (
-              <Button 
-                variant="primary" 
-                size="sm" 
-                onClick={() => navigate('/login')} 
-                className="ml-2 gap-2"
-              >
-                <Plus size={16} />
-                {t.login}
-              </Button>
             )}
           </div>
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-12 md:px-8 lg:py-20">
+      <main className="container mx-auto px-4 py-8 md:px-8 lg:py-12">
         <AnimatePresence mode="wait">
-          {!isPreviewMode ? (
+          {activeTab === 'invoices' ? (
+            !isPreviewMode ? (
             <motion.div
               key="form"
               initial={{ opacity: 0, y: 20 }}
@@ -913,10 +1679,31 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
 
                     <div className="relative">
                       <Label>{t.clientNameLabel}</Label>
+                      {contacts.length > 0 && (
+                        <div className="mb-2 flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                          {contacts.slice(0, 5).map(c => (
+                            <button 
+                              key={c.id} 
+                              onClick={() => setInvoiceData(prev => ({ ...prev, clientName: c.name, contactId: c.id }))}
+                              className={cn(
+                                "whitespace-nowrap px-3 py-1 rounded-full text-[10px] font-black border transition-all",
+                                invoiceData.contactId === c.id 
+                                  ? "bg-blue-600 text-white border-blue-600" 
+                                  : "bg-slate-50 dark:bg-white/5 border-slate-200 dark:border-white/10 text-[#666666]"
+                              )}
+                            >
+                              {c.name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       <Input 
                         placeholder={t.clientNamePlaceholder}
                         value={invoiceData.clientName}
-                        onChange={(e) => handleFieldChangeWithSuggestions('clientName', e.target.value)}
+                        onChange={(e) => {
+                          handleFieldChangeWithSuggestions('clientName', e.target.value);
+                          if (invoiceData.contactId) setInvoiceData(prev => ({ ...prev, contactId: undefined }));
+                        }}
                         onBlur={() => setTimeout(() => setActiveSuggestionField(null), 200)}
                       />
                       {activeSuggestionField === 'clientName' && filteredSuggestions.length > 0 && (
@@ -988,6 +1775,26 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                               ))}
                             </div>
                           )}
+                        </div>
+                      </div>
+
+                      <div className="md:col-span-2">
+                        <Label>{lang === 'en' ? 'Invoice Status' : 'حالة الفاتورة'}</Label>
+                        <div className="flex gap-2">
+                          {(['pending', 'paid', 'overdue'] as const).map(s => (
+                            <button 
+                              key={s}
+                              onClick={() => setInvoiceData(prev => ({ ...prev, status: s }))}
+                              className={cn(
+                                "flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all",
+                                invoiceData.status === s
+                                  ? (s === 'paid' ? "bg-emerald-500 text-white border-emerald-500 shadow-lg shadow-emerald-500/20" : s === 'pending' ? "bg-orange-500 text-white border-orange-500 shadow-lg shadow-orange-500/20" : "bg-red-500 text-white border-red-500 shadow-lg shadow-red-500/20")
+                                  : "bg-white dark:bg-white/5 border-slate-200 dark:border-white/10 text-[#666666]"
+                              )}
+                            >
+                              {s === 'paid' ? (lang === 'en' ? 'Paid' : 'مدفوعة') : s === 'pending' ? (lang === 'en' ? 'Pending' : 'قيد الانتظار') : (lang === 'en' ? 'Overdue' : 'متأخرة')}
+                            </button>
+                          ))}
                         </div>
                       </div>
                     </div>
@@ -1206,6 +2013,14 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                         <p className="font-medium">{t.date}: {new Date().toLocaleDateString(lang === 'ar' ? 'ar-EG-u-ca-gregory' : 'en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
                         <p>{t.invoiceNo}: #INV-{Math.floor(100000 + Math.random() * 900000)}</p>
                       </div>
+                      <div className={cn("mt-4 flex", lang === 'ar' ? 'justify-start' : 'justify-end')}>
+                        <span className={cn(
+                          "px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-[0.2em] shadow-sm",
+                          invoiceData.status === 'paid' ? "bg-emerald-500 text-white" : invoiceData.status === 'pending' ? "bg-orange-500 text-white" : "bg-red-500 text-white"
+                        )}>
+                          {invoiceData.status === 'paid' ? (lang === 'en' ? 'Paid' : 'مدفوعة') : invoiceData.status === 'pending' ? (lang === 'en' ? 'Pending' : 'قيد الانتظار') : (lang === 'en' ? 'Overdue' : 'متأخرة')}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
@@ -1283,24 +2098,53 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                     </div>
                   )}
 
-                  {/* Footer */}
-                  <div className="mt-24 rounded-2xl bg-[#F9F9F9] dark:bg-[#060B16] p-8 text-center">
-                    <div className="mb-4 flex justify-center">
-                      <div className="rounded-full bg-white dark:bg-[#0F172A] p-2 shadow-sm">
-                        <CheckCircle2 className="text-[#1A1A1A] dark:text-[#E2E8F0]" size={24} />
-                      </div>
-                    </div>
-                    <p className={cn("text-sm font-bold text-[#1A1A1A] dark:text-[#E2E8F0] mb-1 uppercase", lang === 'en' && "tracking-widest")}>{t.thankYou}</p>
-                  </div>
                 </div>
               </div>
             </div>
 
-            <div className="no-print mt-12 flex items-center justify-center gap-2 text-sm text-[#999999]">
+            {/* Actions & QR - Outside of invoice container to prevent appearing in print/export */}
+            <div className="mt-12 space-y-8 no-print">
+              <div className="rounded-[40px] bg-white dark:bg-white/5 border-2 border-[#1A1A1A]/10 dark:border-white/10 p-12 text-center shadow-xl shadow-[#1A1A1A]/5">
+                <div className="flex flex-col items-center">
+                  <div className="bg-white p-4 rounded-3xl shadow-xl mb-6">
+                    <QRCodeSVG 
+                      value={window.location.href + `?invoice=${invoiceData.id}`} 
+                      size={120}
+                      level="H"
+                      includeMargin={false}
+                    />
+                  </div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#999999] mb-8">
+                    {lang === 'en' ? 'Scan to view digital version' : 'امسح الرمز للمعاملة الرقمية'}
+                  </p>
+                  
+                  <div className="flex flex-wrap justify-center gap-4">
+                    <Button variant="outline" className="rounded-2xl h-12 px-6 font-bold" onClick={() => {
+                      navigator.clipboard.writeText(window.location.href + `?invoice=${invoiceData.id}`);
+                      confetti({ particleCount: 30, spread: 50, origin: { y: 0.8 } });
+                    }}>
+                      <LinkIcon size={18} className={lang === 'ar' ? 'ml-2' : 'mr-2'} />
+                      {lang === 'en' ? 'Copy Link' : 'نسخ الرابط'}
+                    </Button>
+                    <Button onClick={() => window.print()} className="rounded-2xl h-12 px-6 font-bold bg-[#1A1A1A] hover:bg-black dark:bg-white dark:text-[#1A1A1A]">
+                      <Printer size={18} className={lang === 'ar' ? 'ml-2' : 'mr-2'} />
+                      {lang === 'en' ? 'Print Invoice' : 'طباعة الفاتورة'}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-center gap-2 text-sm text-[#999999]">
                 <Briefcase size={18} />
                 <span>{t.poweredBy}</span>
               </div>
-            </motion.div>
+            </div>
+          </motion.div>
+          )
+          ) : activeTab === 'contacts' ? (
+            <ContactsView />
+          ) : (
+            <DashboardView />
           )}
         </AnimatePresence>
       </main>
@@ -1459,6 +2303,198 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                 <Button variant="ghost" onClick={() => setShowDeleteConfirm(false)} className="flex-1 py-4">{lang === 'ar' ? 'تراجع' : 'Cancel'}</Button>
                 <Button variant="primary" onClick={handleDeleteInvoice} className="flex-1 py-4 bg-red-500 hover:bg-red-600 text-white border-none shadow-none">{lang === 'ar' ? 'حذف الآن' : 'Delete Now'}</Button>
               </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showAddContact && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowAddContact(false)} className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="relative w-full max-w-lg rounded-[32px] bg-white dark:bg-[#0F172A] p-8 shadow-2xl border border-blue-100 dark:border-blue-900/10">
+               <div className="flex items-center justify-between mb-8">
+                 <h2 className="text-2xl font-black">{t.addClient}</h2>
+                 <Button variant="ghost" size="icon" onClick={() => setShowAddContact(false)} className="rounded-full">
+                   <X size={20} />
+                 </Button>
+               </div>
+
+               <div className="space-y-6">
+                 <div>
+                   <Label>{t.clientName}</Label>
+                   <Input 
+                     value={newContactData.name}
+                     onChange={e => setNewContactData(prev => ({ ...prev, name: e.target.value }))}
+                     placeholder={lang === 'en' ? 'Full Name' : 'الاسم الكامل'}
+                     className="h-12 bg-slate-50 dark:bg-white/5 border-none font-bold"
+                   />
+                 </div>
+                 <div className="grid grid-cols-2 gap-4">
+                   <div>
+                     <Label>{t.phone}</Label>
+                     <Input 
+                       value={newContactData.phone}
+                       onChange={e => setNewContactData(prev => ({ ...prev, phone: e.target.value }))}
+                       placeholder="05..."
+                       className="h-12 bg-slate-50 dark:bg-white/5 border-none font-bold"
+                     />
+                   </div>
+                   <div>
+                     <Label>{t.email}</Label>
+                     <Input 
+                       value={newContactData.email}
+                       onChange={e => setNewContactData(prev => ({ ...prev, email: e.target.value }))}
+                       placeholder="example@..."
+                       className="h-12 bg-slate-50 dark:bg-white/5 border-none font-bold"
+                     />
+                   </div>
+                 </div>
+                 <div>
+                   <h2 className="text-sm font-bold text-[#666666] mb-3">{t.address}</h2>
+                   <textarea 
+                     value={newContactData.address}
+                     onChange={e => setNewContactData(prev => ({ ...prev, address: e.target.value }))}
+                     className="w-full min-h-[100px] p-4 bg-slate-50 dark:bg-white/5 border-none rounded-2xl outline-none focus:ring-2 focus:ring-blue-500/20 font-bold transition-all"
+                     placeholder={lang === 'en' ? 'Business address...' : 'عنوان العمل...'}
+                   />
+                 </div>
+                 
+                 <Button 
+                   onClick={() => {
+                     handleAddContact(newContactData);
+                     setShowAddContact(false);
+                     setNewContactData({ name: '', phone: '', email: '', address: '' });
+                   }}
+                   className="w-full py-6 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-black"
+                 >
+                   {t.saveClient}
+                 </Button>
+               </div>
+            </motion.div>
+          </div>
+        )}
+
+        {showAddPayment && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowAddPayment(false)} className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="relative w-full max-w-lg rounded-[32px] bg-white dark:bg-[#0F172A] p-8 shadow-2xl border border-blue-100 dark:border-blue-900/10">
+               <div className="flex items-center justify-between mb-8">
+                 <h2 className="text-2xl font-black">{lang === 'en' ? 'Record Payment' : 'تسجيل دفعة'}</h2>
+                 <Button variant="ghost" size="icon" onClick={() => setShowAddPayment(false)} className="rounded-full">
+                   <X size={20} />
+                 </Button>
+               </div>
+
+               <div className="space-y-6">
+                 <div>
+                   <Label>{lang === 'en' ? 'Select Client' : 'اختر العميل'}</Label>
+                   <select 
+                     className="w-full h-12 bg-slate-50 dark:bg-white/5 border-none rounded-xl px-4 outline-none font-bold"
+                     value={newPaymentData.contactId}
+                     onChange={e => setNewPaymentData(prev => ({ ...prev, contactId: e.target.value }))}
+                   >
+                     <option value="">{lang === 'en' ? 'Select...' : 'اختر...'}</option>
+                     {contacts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                   </select>
+                 </div>
+                 <div className="grid grid-cols-2 gap-4">
+                   <div>
+                     <Label>{lang === 'en' ? 'Amount' : 'المبلغ'}</Label>
+                     <Input 
+                       type="number"
+                       value={newPaymentData.amount}
+                       onChange={e => setNewPaymentData(prev => ({ ...prev, amount: parseFloat(e.target.value) }))}
+                       className="h-12 bg-slate-50 dark:bg-white/5 border-none font-bold"
+                     />
+                   </div>
+                   <div>
+                     <Label>{lang === 'en' ? 'Method' : 'الطريقة'}</Label>
+                     <select 
+                        className="w-full h-12 bg-slate-50 dark:bg-white/5 border-none rounded-xl px-4 outline-none font-bold text-xs"
+                        value={newPaymentData.method}
+                        onChange={e => setNewPaymentData(prev => ({ ...prev, method: e.target.value as any }))}
+                     >
+                       <option value="cash">Cash</option>
+                       <option value="bank">Bank Transfer</option>
+                       <option value="card">Card</option>
+                     </select>
+                   </div>
+                 </div>
+                 
+                 <Button 
+                   onClick={() => {
+                     handleAddPayment(newPaymentData);
+                     setShowAddPayment(false);
+                     setNewPaymentData({ contactId: '', amount: 0, method: 'cash' });
+                   }}
+                   className="w-full py-6 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-black"
+                 >
+                   {lang === 'en' ? 'Confirm Payment' : 'تأكيد الدفع'}
+                 </Button>
+               </div>
+            </motion.div>
+          </div>
+        )}
+
+        {showAddExpense && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowAddExpense(false)} className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="relative w-full max-w-lg rounded-[32px] bg-white dark:bg-[#0F172A] p-8 shadow-2xl border border-blue-100 dark:border-blue-900/10">
+               <div className="flex items-center justify-between mb-8">
+                 <h2 className="text-2xl font-black">{lang === 'en' ? 'Add Expense' : 'إضافة مصروف'}</h2>
+                 <Button variant="ghost" size="icon" onClick={() => setShowAddExpense(false)} className="rounded-full">
+                   <X size={20} />
+                 </Button>
+               </div>
+
+               <div className="space-y-6">
+                 <div>
+                   <Label>{lang === 'en' ? 'Description' : 'الوصف'}</Label>
+                   <Input 
+                     value={newExpenseData.description}
+                     onChange={e => setNewExpenseData(prev => ({ ...prev, description: e.target.value }))}
+                     className="h-12 bg-slate-50 dark:bg-white/5 border-none font-bold"
+                     placeholder={lang === 'en' ? 'Rent, Marketing, etc.' : 'إيجار، تسويق، إلخ.'}
+                   />
+                 </div>
+                 <div className="grid grid-cols-2 gap-4">
+                   <div>
+                     <Label>{lang === 'en' ? 'Amount' : 'المبلغ'}</Label>
+                     <Input 
+                       type="number"
+                       value={newExpenseData.amount}
+                       onChange={e => setNewExpenseData(prev => ({ ...prev, amount: parseFloat(e.target.value) }))}
+                       className="h-12 bg-slate-50 dark:bg-white/5 border-none font-bold"
+                     />
+                   </div>
+                   <div>
+                     <Label>{lang === 'en' ? 'Category' : 'الفئة'}</Label>
+                     <select 
+                        className="w-full h-12 bg-slate-50 dark:bg-white/5 border-none rounded-xl px-4 outline-none font-bold"
+                        value={newExpenseData.category}
+                        onChange={e => setNewExpenseData(prev => ({ ...prev, category: e.target.value }))}
+                     >
+                       <option value="Rent">Rent</option>
+                       <option value="Materials">Materials</option>
+                       <option value="Shipping">Shipping</option>
+                       <option value="Marketing">Marketing</option>
+                       <option value="Other">Other</option>
+                     </select>
+                   </div>
+                 </div>
+                 
+                 <Button 
+                   onClick={() => {
+                     handleAddExpense(newExpenseData);
+                     setShowAddExpense(false);
+                     setNewExpenseData({ category: 'Rent', amount: 0, description: '' });
+                   }}
+                   className="w-full py-6 rounded-2xl bg-red-600 hover:bg-red-700 text-white font-black"
+                 >
+                   {lang === 'en' ? 'Save Expense' : 'حفظ المصروف'}
+                 </Button>
+               </div>
             </motion.div>
           </div>
         )}

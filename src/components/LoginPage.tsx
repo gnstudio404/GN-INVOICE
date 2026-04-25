@@ -31,6 +31,7 @@ interface LoginPageProps {
 const LoginPage: React.FC<LoginPageProps> = ({ lang, isDarkMode }) => {
   const navigate = useNavigate();
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isSignup, setIsSignup] = useState(false);
@@ -92,11 +93,31 @@ const LoginPage: React.FC<LoginPageProps> = ({ lang, isDarkMode }) => {
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
       if (user) {
-        navigate('/invoice');
+        navigate('/invoice', { replace: true });
+      } else {
+        setAuthLoading(false);
       }
     });
     return () => unsub();
   }, [navigate]);
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-[#060B16]">
+        <div className="flex flex-col items-center gap-6">
+          <div className="relative">
+            <div className="h-16 w-16 animate-spin rounded-full border-4 border-blue-600/20 border-t-blue-600" />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="h-2 w-2 rounded-full bg-blue-600 animate-pulse" />
+            </div>
+          </div>
+          <p className="font-black text-blue-600 tracking-widest text-sm animate-pulse uppercase">
+            AUTHENTICATING...
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const handleGoogleLogin = async () => {
     setIsLoggingIn(true);

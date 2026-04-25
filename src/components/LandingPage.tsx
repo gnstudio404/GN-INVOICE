@@ -11,7 +11,9 @@ import {
   Share2,
   Languages
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { auth } from '../lib/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 import { cn } from '../lib/utils';
 
 interface LandingPageProps {
@@ -22,41 +24,71 @@ interface LandingPageProps {
 }
 
 const LandingPage: React.FC<LandingPageProps> = ({ lang, setLang, isDarkMode, setIsDarkMode }) => {
+  const navigate = useNavigate();
+  const [checkingAuth, setCheckingAuth] = useState(true);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        navigate('/invoice', { replace: true });
+      } else {
+        setCheckingAuth(false);
+      }
+    });
+    return () => unsub();
+  }, [navigate]);
+
+  if (checkingAuth) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-[#060B16]">
+        <div className="flex flex-col items-center gap-6">
+          <div className="relative">
+            <div className="h-16 w-16 animate-spin rounded-full border-4 border-blue-600/20 border-t-blue-600" />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="h-2 w-2 rounded-full bg-blue-600 animate-pulse" />
+            </div>
+          </div>
+          <p className="font-black text-blue-600 tracking-widest text-sm animate-pulse uppercase">
+            AUTHENTICATING...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const t = {
     en: {
       navStart: "Start",
-      heroTitle: "Create Professional",
-      heroTitleGradient: "Invoices in Seconds",
-      heroDesc: "Turn your freelance or online business into a professional brand with clean, elegant invoices. No complex software, just simple invoicing.",
-      ctaPrimary: "Start Creating Invoice",
-      ctaSecondary: "View Sample",
-      feature1Title: "Fast & Easy",
-      feature1Desc: "Generate invoices in under a minute with our intuitive interface.",
-      feature2Title: "Professional Design",
-      feature2Desc: "Impress your clients with high-end, modern invoice templates.",
-      feature3Title: "Secure & Private",
-      feature3Desc: "Your data stays in your browser. We don't store your invoices.",
-      feature4Title: "Easy Sharing",
-      feature4Desc: "Download as PDF or PNG and share with your clients instantly.",
+      heroTitle: "Manage Your Business",
+      heroTitleGradient: "With Professional Precision",
+      heroDesc: "Beyond just invoices - track your clients, manage accounts, and grow your brand with a comprehensive business hub designed for freelancers.",
+      ctaPrimary: "Enter Your Business Hub",
+      feature1Title: "Business Accounts",
+      feature1Desc: "Keep a dedicated profile for each client with transaction history.",
+      feature2Title: "Smart Invoicing",
+      feature2Desc: "Auto-calculate balances and track payment statuses live.",
+      feature3Title: "Secure Sync",
+      feature3Desc: "Access your business data anywhere with secure cloud synchronization.",
+      feature4Title: "Financial Overview",
+      feature4Desc: "Get a clear picture of your total receivables and recent activities.",
       footerDesc: "The premium invoicing solution for modern freelancers and digital businesses.",
       rights: "All rights reserved.",
       login: "Login"
     },
     ar: {
       navStart: "ابدأ الآن",
-      heroTitle: "أنشئ فواتير",
-      heroTitleGradient: "احترافية في ثوانٍ",
-      heroDesc: "حول عملك الحر أو نشاطك التجاري عبر الإنترنت إلى علامة تجارية احترافية بفواتير نظيفة وأنيقة. لا برامج معقدة، فقط فوترة بسيطة.",
-      ctaPrimary: "ابدأ بإنشاء فاتورة",
-      ctaSecondary: "عرض نموذج",
-      feature1Title: "سريع وسهل",
-      feature1Desc: "أنشئ فواتير في أقل من دقيقة من خلال واجهتنا البديهية.",
-      feature2Title: "تصميم احترافي",
-      feature2Desc: "أبهر عملائك بنماذج فواتير عصرية وعالية الجودة.",
-      feature3Title: "آمن وخاص",
-      feature3Desc: "بياناتك تبقى في متصفحك. نحن لا نخزن فواتيرك.",
-      feature4Title: "سهولة المشاركة",
-      feature4Desc: "حملها كـ PDF أو PNG وشاركها مع عملائك على الفور.",
+      heroTitle: "أدر أعمالك",
+      heroTitleGradient: "بدقة احترافية",
+      heroDesc: "أكثر من مجرد فواتير - تتبع عملائك، أدر حساباتهم، وطوّر علامتك التجارية من خلال مركز أعمال متكامل مصمم للمستقلين.",
+      ctaPrimary: "ادخل إلى مركز أعمالك",
+      feature1Title: "حسابات العملاء",
+      feature1Desc: "ملف خاص لكل عميل مع أرشيف كامل للمعاملات والديون.",
+      feature2Title: "فوترة ذكية",
+      feature2Desc: "حساب تلقائي للأرصدة وتتبع حالات الدفع بشكل مباشر.",
+      feature3Title: "مزامنة آمنة",
+      feature3Desc: "بيانات أعمالك معك في كل مكان من خلال مزامنة سحابية مشفرة.",
+      feature4Title: "نظرة مالية",
+      feature4Desc: "صورة واضحة لإجمالي مستحقاتك وأحدث نشاطاتك المالية.",
       footerDesc: "حل الفوترة المتميز للمستقلين والشركات الرقمية الحديثة.",
       rights: "جميع الحقوق محفوظة.",
       login: "تسجيل الدخول"

@@ -24,7 +24,34 @@ service cloud.firestore {
     function isValidInvoice(data) {
       return data.userId == request.auth.uid &&
              data.items is list &&
-             data.items.size() <= 50;
+             data.items.size() <= 100 &&
+             (!('contactId' in data) || (data.contactId == null || isValidId(data.contactId)));
+    }
+
+    function isValidContact(data) {
+      return data.userId == request.auth.uid &&
+             data.name is string &&
+             data.name.size() > 0 && 
+             data.name.size() <= 100;
+    }
+
+    function isValidPayment(data) {
+      return data.userId == request.auth.uid &&
+             data.amount is number &&
+             data.amount >= 0 &&
+             isValidId(data.contactId);
+    }
+
+    function isValidExpense(data) {
+      return data.userId == request.auth.uid &&
+             data.amount is number &&
+             data.amount >= 0;
+    }
+
+    function isValidProduct(data) {
+      return data.userId == request.auth.uid &&
+             data.name is string &&
+             data.price is number;
     }
 
     match /invoices/{invoiceId} {
@@ -32,6 +59,38 @@ service cloud.firestore {
       allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
       allow create: if isSignedIn() && isValidInvoice(incoming());
       allow update: if isOwner(resource.data.userId) && isValidInvoice(incoming());
+      allow delete: if isOwner(resource.data.userId);
+    }
+
+    match /clients/{clientId} {
+      allow get: if isOwner(resource.data.userId);
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidContact(incoming());
+      allow update: if isOwner(resource.data.userId) && isValidContact(incoming());
+      allow delete: if isOwner(resource.data.userId);
+    }
+
+    match /payments/{paymentId} {
+      allow get: if isOwner(resource.data.userId);
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidPayment(incoming());
+      allow update: if isOwner(resource.data.userId) && isValidPayment(incoming());
+      allow delete: if isOwner(resource.data.userId);
+    }
+
+    match /expenses/{expenseId} {
+      allow get: if isOwner(resource.data.userId);
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidExpense(incoming());
+      allow update: if isOwner(resource.data.userId) && isValidExpense(incoming());
+      allow delete: if isOwner(resource.data.userId);
+    }
+
+    match /products/{productId} {
+      allow get: if isOwner(resource.data.userId);
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidProduct(incoming());
+      allow update: if isOwner(resource.data.userId) && isValidProduct(incoming());
       allow delete: if isOwner(resource.data.userId);
     }
   }
