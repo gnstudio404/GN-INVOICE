@@ -746,22 +746,28 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
         console.log("[Firestore] Invoice added with ID:", docRef.id);
         
         // Update contact balance if associated
+        const totalAmount = invoiceToSave.totalAmount || total;
         if (invoiceData.contactId && invoiceToSave.status !== 'paid') {
           const contactRef = doc(db, "clients", invoiceData.contactId);
           const contactSnap = await getDoc(contactRef);
           if (contactSnap.exists()) {
             const currentBalance = contactSnap.data().totalBalance || 0;
             await updateDoc(contactRef, {
-              totalBalance: currentBalance + total,
+              totalBalance: currentBalance + totalAmount,
               updatedAt: serverTimestamp()
             });
             console.log("[Firestore] Updated contact balance");
           }
         }
       }
+      
+      // Explicit success feedback for the user
+      alert(lang === 'en' ? "Successfully saved to your Google Cloud!" : "تم الحفظ بنجاح في سحابة جوجل الخاصة بك!");
+      
     } catch (err) {
       console.error("[Firestore] Error saving invoice:", err);
       setLastFirebaseError(err instanceof Error ? err.message : String(err));
+      alert(lang === 'en' ? "Error saving to cloud. Please check your connection." : "خطأ في الحفظ السحابي. يرجى التحقق من الاتصال.");
     } finally {
       setIsSavingToFirestore(false);
     }
@@ -1704,9 +1710,12 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
 
             {user && (
               <div className="hidden md:flex items-center gap-3 ml-2 border-l border-[#F0F0F0] dark:border-white/5 pl-4">
-                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 text-[10px] font-bold">
-                  <CheckCircle2 size={12} />
-                  {lang === 'en' ? 'Synced' : 'متصل'}
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-[10px] font-black uppercase tracking-wider">
+                  <div className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </div>
+                  {lang === 'en' ? 'Cloud Secure' : 'حفظ سحابي آمن'}
                 </div>
                 {user.photoURL && (
                   <img 
@@ -2410,8 +2419,15 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
               />
               <div className="flex gap-3">
                 <Button variant="outline" onClick={() => setShowSaveModal(false)} className="flex-1 py-4">{lang === 'ar' ? 'إلغاء' : 'Cancel'}</Button>
-                <Button onClick={handleSaveToHistory} className="flex-1 py-4" disabled={isSavingToFirestore}>
-                  {isSavingToFirestore ? <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#1A1A1A] border-t-transparent" /> : (lang === 'ar' ? 'تاكيد الحفظ' : 'Confirm Save')}
+                <Button onClick={handleSaveToHistory} className="flex-1 py-4 gap-2" disabled={isSavingToFirestore}>
+                  {isSavingToFirestore ? (
+                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  ) : (
+                    <>
+                      {user && <Cloud size={18} className="text-white/70" />}
+                      <span>{lang === 'ar' ? 'تأكيد الحفظ السحابي' : 'Confirm Cloud Save'}</span>
+                    </>
+                  )}
                 </Button>
               </div>
             </motion.div>

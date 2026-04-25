@@ -25,7 +25,7 @@ service cloud.firestore {
       return data.userId == request.auth.uid &&
              data.items is list &&
              data.items.size() <= 100 &&
-             (!('contactId' in data) || (data.contactId == null || isValidId(data.contactId)));
+             (!('contactId' in data) || (data.contactId == null || data.contactId == "" || isValidId(data.contactId)));
     }
 
     function isValidContact(data) {

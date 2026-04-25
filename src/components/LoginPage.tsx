@@ -126,8 +126,11 @@ const LoginPage: React.FC<LoginPageProps> = ({ lang, isDarkMode }) => {
       await signInWithPopup(auth, googleProvider);
     } catch (error: any) {
       console.error("Login error:", error);
-      // Suppress message if user just closed the popup
-      if (error.code !== 'auth/popup-closed-by-user') {
+      if (error.code === 'auth/popup-blocked') {
+        setErrorMessage(lang === 'en' 
+          ? "Popup blocked! Please allow popups for this site in your browser settings to log in with Google." 
+          : "تم حظر النافذة المنبثقة! يرجى السماح بالنوافذ المنبثقة لهذا الموقع في إعدادات متصفحك لإتمام تسجيل الدخول.");
+      } else if (error.code !== 'auth/popup-closed-by-user') {
         setErrorMessage(error.message);
       }
     } finally {
