@@ -49,6 +49,7 @@ import {
   DownloadCloud,
   CloudUpload,
   CloudOff,
+  Cloud,
   History,
   Save,
   X,
@@ -692,6 +693,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     setShowSaveModal(false);
 
     if (!user) {
+      console.log("[Local] Saving invoice locally (Guest Mode)");
       setSavedInvoices(prev => {
         const exists = prev.findIndex(inv => inv.id === currentId);
         let updated;
@@ -718,11 +720,11 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
           return updated;
         });
       }
-      
       return;
     }
 
     setIsSavingToFirestore(true);
+    console.log("[Firestore] Attempting to save invoice...", invoiceToSave.id);
     try {
       const { id, ...dataToSave } = invoiceToSave;
       const cleanedData = {
@@ -731,14 +733,17 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
         updatedAt: serverTimestamp()
       };
       
-      const isFirestoreId = invoiceData.id && !invoiceData.id.includes('-');
+      const isActuallyFirestoreId = invoiceData.id && !invoiceData.id.includes('-') && invoiceData.id.length > 5;
 
-      if (isFirestoreId) {
+      if (isActuallyFirestoreId) {
+        console.log("[Firestore] Updating existing invoice:", invoiceData.id);
         const docRef = doc(db, "invoices", invoiceData.id!);
         await updateDoc(docRef, cleanedData);
       } else {
+        console.log("[Firestore] Adding new invoice");
         const docRef = await addDoc(collection(db, "invoices"), cleanedData);
         setInvoiceData(prev => ({ ...prev, id: docRef.id }));
+        console.log("[Firestore] Invoice added with ID:", docRef.id);
         
         // Update contact balance if associated
         if (invoiceData.contactId && invoiceToSave.status !== 'paid') {
@@ -747,13 +752,16 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
           if (contactSnap.exists()) {
             const currentBalance = contactSnap.data().totalBalance || 0;
             await updateDoc(contactRef, {
-              totalBalance: currentBalance + total
+              totalBalance: currentBalance + total,
+              updatedAt: serverTimestamp()
             });
+            console.log("[Firestore] Updated contact balance");
           }
         }
       }
-    } catch (error) {
-      console.error("Firestore save error:", error);
+    } catch (err) {
+      console.error("[Firestore] Error saving invoice:", err);
+      setLastFirebaseError(err instanceof Error ? err.message : String(err));
     } finally {
       setIsSavingToFirestore(false);
     }
@@ -916,10 +924,82 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     }
   };
 
-  // Save history to localStorage
-  useEffect(() => {
-    localStorage.setItem('gn_invoice_history', JSON.stringify(savedInvoices));
-  }, [savedInvoices]);
+  const handleSyncData = async () => {
+    if (!user) return;
+    setIsSavingToFirestore(true);
+    console.log("[Sync] Starting data sync to cloud...");
+    
+    try {
+      // Sync Contacts
+      const localContactsStr = localStorage.getItem('gn_contacts');
+      if (localContactsStr) {
+        const localContacts = JSON.parse(localContactsStr);
+        for (const c of localContacts) {
+          const { id, ...data } = c;
+          await addDoc(collection(db, "clients"), {
+            ...data,
+            userId: user.uid,
+            createdAt: serverTimestamp()
+          });
+        }
+        localStorage.removeItem('gn_contacts');
+      }
+
+      // Sync Invoices
+      const localInvoicesStr = localStorage.getItem('gn_invoice_history');
+      if (localInvoicesStr) {
+        const localInvoices = JSON.parse(localInvoicesStr);
+        for (const inv of localInvoices) {
+          const { id, ...data } = inv;
+          await addDoc(collection(db, "invoices"), {
+            ...data,
+            userId: user.uid,
+            savedAt: data.savedAt || new Date().toISOString()
+          });
+        }
+        localStorage.removeItem('gn_invoice_history');
+      }
+
+      // Sync Expenses
+      const localExpensesStr = localStorage.getItem('gn_expenses');
+      if (localExpensesStr) {
+        const localExpenses = JSON.parse(localExpensesStr);
+        for (const ex of localExpenses) {
+          const { id, ...data } = ex;
+          await addDoc(collection(db, "expenses"), {
+            ...data,
+            userId: user.uid,
+            date: serverTimestamp()
+          });
+        }
+        localStorage.removeItem('gn_expenses');
+      }
+
+       // Sync Payments
+       const localPaymentsStr = localStorage.getItem('gn_payments');
+       if (localPaymentsStr) {
+         const localPayments = JSON.parse(localPaymentsStr);
+         for (const p of localPayments) {
+           const { id, ...data } = p;
+           await addDoc(collection(db, "payments"), {
+             ...data,
+             userId: user.uid,
+             date: serverTimestamp()
+           });
+         }
+         localStorage.removeItem('gn_payments');
+       }
+      
+      console.log("[Sync] Finished data sync successfully");
+    } catch (err) {
+      console.error("[Sync] Error during sync:", err);
+      setLastFirebaseError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsSavingToFirestore(false);
+    }
+  };
+
+  const hasLocalData = localStorage.getItem('gn_contacts') || localStorage.getItem('gn_invoice_history');
 
   const total = invoiceData.items.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
 
@@ -1294,6 +1374,8 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
     const netProfit = totalRevenue - totalExpenses;
 
+    const dashboardInvoices = savedInvoices.slice(0, 5);
+
     return (
       <motion.div 
          key="dashboard"
@@ -1402,6 +1484,38 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                 </button>
               </div>
            </div>
+         </div>
+
+         <div className="bg-white dark:bg-white/5 border-2 border-[#1A1A1A]/5 dark:border-white/10 p-8 rounded-[40px]">
+            <div className="flex items-center justify-between mb-8">
+              <h3 className="text-xl font-black">{lang === 'en' ? 'Recent Invoices' : 'آخر الفواتير'}</h3>
+              <Button variant="ghost" size="sm" onClick={() => setShowHistory(true)} className="text-blue-500 font-bold">{lang === 'en' ? 'View All' : 'عرض الكل'}</Button>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {dashboardInvoices.map(inv => (
+                <div key={inv.id} className="flex flex-col p-6 rounded-3xl bg-slate-50 dark:bg-white/5 border border-transparent hover:border-blue-500/30 transition-all cursor-pointer" onClick={() => handleLoadInvoice(inv)}>
+                  <div className="flex items-center justify-between mb-4">
+                    <div className={cn("px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest", inv.status === 'paid' ? "bg-emerald-500/10 text-emerald-500" : "bg-amber-500/10 text-amber-500")}>
+                      {inv.status === 'paid' ? (lang === 'en' ? 'Paid' : 'مدفوعة') : (lang === 'en' ? 'Pending' : 'معلقة')}
+                    </div>
+                    <span className="text-[10px] text-[#999999]">{inv.savedAt ? new Date(inv.savedAt).toLocaleDateString() : ''}</span>
+                  </div>
+                  <h4 className="font-bold mb-1 truncate">{inv.invoiceTitle || t.invoiceTitleDefault}</h4>
+                  <p className="text-xs text-[#666666] dark:text-[#94A3B8] mb-4 truncate">{inv.clientName || t.client}</p>
+                  <div className="mt-auto pt-4 border-t border-[#1A1A1A]/5 dark:border-white/5 flex items-center justify-between">
+                    <span className="text-lg font-black">{t.currencySymbol}{(inv.totalAmount || 0).toLocaleString()}</span>
+                    <div className="h-8 w-8 rounded-full bg-white dark:bg-white/10 flex items-center justify-center shadow-sm">
+                      <ChevronRight size={16} />
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {dashboardInvoices.length === 0 && (
+                <div className="sm:col-span-2 lg:col-span-3 py-20 text-center border-2 border-dashed border-slate-200 dark:border-white/10 rounded-3xl">
+                  <p className="text-[#999999] font-bold">{lang === 'en' ? 'No recent invoices' : 'لا يوجد فواتير مؤخراً'}</p>
+                </div>
+              )}
+            </div>
          </div>
       </motion.div>
     );
@@ -1536,6 +1650,20 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
               ? 'Guest Mode: Data saved only in this browser. Login to sync with cloud.' 
               : 'وضع الزائر: البيانات محفوظة في هذا المتصفح فقط. سجل دخولك للمزامنة السحابية.'}
             <button onClick={() => navigate('/login')} className="underline ml-1 cursor-pointer font-black">{t.login}</button>
+          </p>
+        </div>
+      )}
+
+      {user && hasLocalData && (
+        <div className="no-print bg-blue-600 p-2 text-center">
+          <p className="text-[10px] md:text-xs font-bold text-white flex items-center justify-center gap-4">
+            <Cloud size={14} />
+            {lang === 'en' 
+              ? 'You have offline data from your guest session. Sync it to your Google account?' 
+              : 'لديك بيانات من جلسة الزائر. هل تود مزامنتها مع حساب جوجل الخاص بك؟'}
+            <Button size="sm" onClick={handleSyncData} disabled={isSavingToFirestore} className="bg-white text-blue-600 hover:bg-blue-50 h-7 text-[10px] px-4 font-black">
+              {isSavingToFirestore ? (isAr ? 'جاري المزامنة...' : 'Syncing...') : (isAr ? 'مزامنة الآن' : 'Sync Now')}
+            </Button>
           </p>
         </div>
       )}
