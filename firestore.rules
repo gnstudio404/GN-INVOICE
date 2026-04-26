@@ -60,42 +60,57 @@ service cloud.firestore {
              (!('phone' in data) || data.phone is string);
     }
 
+    function isApproved() {
+      return get(/databases/$(database)/documents/users_profiles/$(request.auth.uid)).data.isApproved == true;
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn() && request.auth.token.email == 'mrmostafash187@gmail.com';
+    }
+
+    match /users_profiles/{userId} {
+      allow get: if isSignedIn() && (request.auth.uid == userId || isSuperAdmin());
+      allow list: if isSuperAdmin();
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isSuperAdmin() || (isSignedIn() && request.auth.uid == userId && !incoming().diff(existing()).affectedKeys().hasAny(['isApproved']));
+    }
+
     match /invoices/{invoiceId} {
       allow get: if isOwner(resource.data.userId);
-      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow create: if isSignedIn() && isValidInvoice(incoming());
+      allow list: if isApproved() && resource.data.userId == request.auth.uid;
+      allow create: if isApproved() && isValidInvoice(incoming());
       allow update: if isOwner(resource.data.userId) && isValidInvoice(incoming());
       allow delete: if isOwner(resource.data.userId);
     }
 
     match /clients/{clientId} {
       allow get: if isOwner(resource.data.userId);
-      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow create: if isSignedIn() && isValidContact(incoming());
+      allow list: if isApproved() && resource.data.userId == request.auth.uid;
+      allow create: if isApproved() && isValidContact(incoming());
       allow update: if isOwner(resource.data.userId) && isValidContact(incoming());
       allow delete: if isOwner(resource.data.userId);
     }
 
     match /payments/{paymentId} {
       allow get: if isOwner(resource.data.userId);
-      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow create: if isSignedIn() && isValidPayment(incoming());
+      allow list: if isApproved() && resource.data.userId == request.auth.uid;
+      allow create: if isApproved() && isValidPayment(incoming());
       allow update: if isOwner(resource.data.userId) && isValidPayment(incoming());
       allow delete: if isOwner(resource.data.userId);
     }
 
     match /expenses/{expenseId} {
       allow get: if isOwner(resource.data.userId);
-      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow create: if isSignedIn() && isValidExpense(incoming());
+      allow list: if isApproved() && resource.data.userId == request.auth.uid;
+      allow create: if isApproved() && isValidExpense(incoming());
       allow update: if isOwner(resource.data.userId) && isValidExpense(incoming());
       allow delete: if isOwner(resource.data.userId);
     }
 
     match /products/{productId} {
       allow get: if isOwner(resource.data.userId);
-      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow create: if isSignedIn() && isValidProduct(incoming());
+      allow list: if isApproved() && resource.data.userId == request.auth.uid;
+      allow create: if isApproved() && isValidProduct(incoming());
       allow update: if isOwner(resource.data.userId) && isValidProduct(incoming());
       allow delete: if isOwner(resource.data.userId);
     }
@@ -103,7 +118,7 @@ service cloud.firestore {
     match /businessInfo/{userId} {
       allow get: if isOwner(userId);
       // Even though it's set by userId, it's a collection, so list still applies for queries if used
-      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow list: if isApproved() && resource.data.userId == request.auth.uid;
       allow create: if isOwner(userId) && isValidBusinessInfo(incoming());
       allow update: if isOwner(userId) && isValidBusinessInfo(incoming());
       allow delete: if isOwner(userId);

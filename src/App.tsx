@@ -444,7 +444,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [businessInfo, setBusinessInfo] = useState<BusinessInfo | null>(null);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'invoices' | 'contacts' | 'payments' | 'expenses' | 'profile'>(() => (localStorage.getItem('gn_active_tab') as any) || 'dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'invoices' | 'contacts' | 'payments' | 'expenses' | 'profile' | 'subscribers'>(() => (localStorage.getItem('gn_active_tab') as any) || 'dashboard');
   
   const contactsWithAggregatedDebt = useMemo(() => {
     return contacts.map(contact => {
@@ -474,6 +474,20 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [lastFirebaseError, setLastFirebaseError] = useState<string | null>(null);
+  const [isApproved, setIsApproved] = useState<boolean | null>(null);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
+  const ADMIN_EMAIL = "mrmostafash187@gmail.com";
+
+  interface UserProfile {
+    uid: string;
+    email: string;
+    displayName: string;
+    photoURL: string;
+    isApproved: boolean;
+    createdAt: any;
+    lastLogin: any;
+  }
   const [showDebug, setShowDebug] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isSavingToFirestore, setIsSavingToFirestore] = useState(false);
@@ -536,9 +550,47 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     checkRedirect();
 
     console.log("[Auth] Setting up listener...");
-    const unsubAuth = onAuthStateChanged(auth, (currentUser) => {
+    const unsubAuth = onAuthStateChanged(auth, async (currentUser) => {
       console.log("[Auth] State changed:", currentUser ? `User: ${currentUser.email} (${currentUser.uid})` : "No user");
       setUser(currentUser);
+      
+      if (currentUser) {
+        // Check/Create Profile
+        const userRef = doc(db, "users_profiles", currentUser.uid);
+        try {
+          const userSnap = await getDoc(userRef);
+          
+          if (userSnap.exists()) {
+            const data = userSnap.data() as UserProfile;
+            setIsApproved(data.isApproved);
+            setIsSuperAdmin(currentUser.email === ADMIN_EMAIL);
+            
+            // Update last login
+            await updateDoc(userRef, { lastLogin: serverTimestamp() });
+          } else {
+            const isDefaultApproved = currentUser.email === ADMIN_EMAIL;
+            const newProfile: UserProfile = {
+              uid: currentUser.uid,
+              email: currentUser.email || '',
+              displayName: currentUser.displayName || 'User',
+              photoURL: currentUser.photoURL || '',
+              isApproved: isDefaultApproved,
+              createdAt: serverTimestamp(),
+              lastLogin: serverTimestamp()
+            };
+            await setDoc(userRef, newProfile);
+            setIsApproved(isDefaultApproved);
+            setIsSuperAdmin(currentUser.email === ADMIN_EMAIL);
+          }
+        } catch (err) {
+          console.error("Error fetching profile:", err);
+          setIsApproved(false);
+        }
+      } else {
+        setIsApproved(null);
+        setIsSuperAdmin(false);
+      }
+      
       setAuthLoading(false);
     });
 
@@ -667,6 +719,21 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
       unsubBusiness();
     };
   }, [user, authLoading]);
+
+  // Fetch all users for super admin
+  useEffect(() => {
+    if (!isSuperAdmin || !user) return;
+
+    const q = query(collection(db, "users_profiles"), orderBy("createdAt", "desc"));
+    const unsub = onSnapshot(q, (snap) => {
+      const users = snap.docs.map(doc => ({ ...doc.data(), uid: doc.id })) as UserProfile[];
+      setAllUsers(users);
+    }, (err) => {
+      console.error("Error fetching users:", err);
+    });
+
+    return () => unsub();
+  }, [isSuperAdmin, user]);
 
   // Persist Builder State for guest
   useEffect(() => {
@@ -1639,7 +1706,15 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
 
   const handleLoadInvoice = (invoice: InvoiceData) => {
     setInvoiceData(invoice);
+    setActiveTab('invoices');
     setIsPreviewMode(false);
+    setShowHistory(false);
+  };
+
+  const handleViewInvoice = (invoice: InvoiceData) => {
+    setInvoiceData(invoice);
+    setActiveTab('invoices');
+    setIsPreviewMode(true);
     setShowHistory(false);
   };
 
@@ -2181,7 +2256,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                {dashboardInvoices.map((inv) => (
                  <div 
                    key={inv.id} 
-                   onClick={() => handleLoadInvoice(inv)}
+                   onClick={() => handleViewInvoice(inv)}
                    className="bg-white dark:bg-white/5 border border-slate-100 dark:border-white/10 p-5 rounded-3xl flex items-center justify-between group hover:border-brand-primary/30 transition-all cursor-pointer"
                  >
                    <div className="flex items-center gap-5">
@@ -2269,6 +2344,87 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                 </tr>
               );
             })}
+          </tbody>
+        </table>
+      </div>
+    </motion.div>
+  );
+
+  const toggleUserApproval = async (uid: string, currentStatus: boolean) => {
+    try {
+      await updateDoc(doc(db, "users_profiles", uid), {
+        isApproved: !currentStatus
+      });
+    } catch (err) {
+      console.error("Error updating user status:", err);
+    }
+  };
+
+  const SubscribersView = () => (
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-4xl font-black tracking-tight text-on-surface dark:text-white uppercase leading-none mb-1">
+            {lang === 'en' ? 'Subscribers' : 'المشتركين'}
+          </h2>
+          <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">
+            {lang === 'en' ? 'Manage user access and subscriptions' : 'إدارة وصول المستخدمين والاشتراكات'}
+          </p>
+        </div>
+      </div>
+
+      <div className="bg-white dark:bg-white/5 rounded-[40px] border border-slate-100 dark:border-white/10 overflow-hidden">
+        <table className="w-full text-left">
+          <thead>
+            <tr className="border-b border-slate-100 dark:border-white/10">
+              <th className="px-8 py-6 text-[10px] font-black uppercase tracking-widest text-slate-400">{lang === 'en' ? 'User' : 'المستخدم'}</th>
+              <th className="px-8 py-6 text-[10px] font-black uppercase tracking-widest text-slate-400">{lang === 'en' ? 'Joined' : 'انضم في'}</th>
+              <th className="px-8 py-6 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">{lang === 'en' ? 'Status' : 'الحالة'}</th>
+              <th className="px-8 py-6 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">{lang === 'en' ? 'Action' : 'إجراء'}</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50 dark:divide-white/5">
+            {allUsers.map((u) => (
+              <tr key={u.uid} className="hover:bg-slate-50/50 dark:hover:bg-white/[0.02] transition-colors">
+                <td className="px-8 py-6">
+                  <div className="flex items-center gap-4">
+                    <img src={u.photoURL} alt="" className="w-10 h-10 rounded-full border-2 border-brand-primary" />
+                    <div>
+                      <div className="font-black text-sm uppercase tracking-tight">{u.displayName}</div>
+                      <div className="text-[10px] text-slate-400 font-bold">{u.email}</div>
+                    </div>
+                  </div>
+                </td>
+                <td className="px-8 py-6 text-xs font-bold text-slate-400">
+                  {u.createdAt?.toDate ? u.createdAt.toDate().toLocaleDateString() : 'N/A'}
+                </td>
+                <td className="px-8 py-6">
+                  <div className="flex justify-center">
+                    <span className={cn(
+                      "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tight",
+                      u.isApproved 
+                        ? "bg-emerald-500/10 text-emerald-500" 
+                        : "bg-red-500/10 text-red-500"
+                    )}>
+                      {u.isApproved ? (lang === 'en' ? 'Approved' : 'مقبول') : (lang === 'en' ? 'Pending' : 'معلق')}
+                    </span>
+                  </div>
+                </td>
+                <td className="px-8 py-6 text-right">
+                  <Button 
+                    variant={u.isApproved ? "danger" : "primary"}
+                    size="sm"
+                    onClick={() => toggleUserApproval(u.uid, u.isApproved)}
+                    disabled={u.email === ADMIN_EMAIL}
+                    className="h-10 px-6 rounded-2xl font-black uppercase tracking-widest text-[10px]"
+                  >
+                    {u.isApproved 
+                      ? (lang === 'en' ? 'Revoke' : 'إلغاء') 
+                      : (lang === 'en' ? 'Approve' : 'قبول')}
+                  </Button>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
@@ -2471,6 +2627,33 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     );
   }
 
+  // --- ACCESS GATE ---
+  if (user && isApproved === false) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-white dark:bg-[#060B16] p-8 text-center">
+        <div className="w-24 h-24 bg-red-100 dark:bg-red-500/10 text-red-600 rounded-full flex items-center justify-center mb-8">
+            <UserMinus size={48} />
+        </div>
+        <h1 className="text-3xl font-black mb-4 uppercase tracking-tight">
+            {isAr ? 'بانتظار الموافقة' : 'Pending Approval'}
+        </h1>
+        <p className="max-w-md text-[#666666] dark:text-[#94A3B8] font-bold text-lg mb-10">
+            {isAr 
+                ? 'مرحباً! لقد سجلت بنجاح، ولكن يجب أن يوافق المالك على حسابك قبل البدء في استخدامه. يرجى التواصل مع المالك للاشتراك.' 
+                : 'Hi there! You logged in successfully, but the owner needs to approve your account before you can start using it. Please contact the owner to subscribe.'}
+        </p>
+        <div className="flex flex-col gap-4 w-full max-w-xs">
+            <Button onClick={() => window.open('https://t.me/mostafash187', '_blank')} className="py-4 bg-[#0088cc] hover:bg-[#007dab] text-white">
+                {isAr ? 'تواصل عبر تيليجرام' : 'Contact via Telegram'}
+            </Button>
+            <Button variant="ghost" onClick={handleLogout} className="py-4">
+                {isAr ? 'تسجيل الخروج' : 'Logout'}
+            </Button>
+        </div>
+      </div>
+    );
+  }
+
   const DebugPanel = () => (
     <div className="fixed bottom-4 right-4 z-[9999] max-w-xs bg-black/90 text-[10px] text-white p-4 rounded-2xl border border-white/20 font-mono shadow-2xl backdrop-blur-xl">
       <div className="flex justify-between items-center mb-2">
@@ -2514,6 +2697,14 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
           <SidebarNavItem icon={<Users size={20} />} label={t.clients} active={activeTab === 'contacts'} onClick={() => { setActiveTab('contacts'); setIsPreviewMode(false); }} />
           <SidebarNavItem icon={<Wallet size={20} />} label={lang === 'en' ? 'Payments' : 'المدفوعات'} active={activeTab === 'payments'} onClick={() => { setActiveTab('payments'); setIsPreviewMode(false); }} />
           <SidebarNavItem icon={<ArrowDownLeft size={20} />} label={lang === 'en' ? 'Expenses' : 'المصاريف'} active={activeTab === 'expenses'} onClick={() => { setActiveTab('expenses'); setIsPreviewMode(false); }} />
+          {isSuperAdmin && (
+            <SidebarNavItem 
+              icon={<Users size={20} className="text-brand-primary" />} 
+              label={lang === 'en' ? 'Subscribers' : 'المشتركين'} 
+              active={activeTab === 'subscribers'} 
+              onClick={() => { setActiveTab('subscribers'); setIsPreviewMode(false); }} 
+            />
+          )}
         </nav>
 
         <div className="p-6 border-t border-slate-50 dark:border-white/5 space-y-2">
@@ -3190,6 +3381,8 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
             <PaymentsView />
           ) : activeTab === 'expenses' ? (
             <ExpensesView />
+          ) : activeTab === 'subscribers' ? (
+            <SubscribersView />
           ) : activeTab === 'profile' ? (
             <ProfileView />
           ) : (
