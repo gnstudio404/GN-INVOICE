@@ -114,6 +114,8 @@ const translations = {
     serviceProviderPlaceholder: "Your name or business name",
     clientNameLabel: "Client Name (Optional)",
     clientNamePlaceholder: "Recipient name",
+    clientPhoneLabel: "Client Phone (Optional)",
+    clientPhonePlaceholder: "Recipient phone",
     businessLogo: "Business Logo",
     uploadLogo: "Upload your logo",
     logoDesc: "PNG, JPG or SVG up to 2MB",
@@ -183,7 +185,7 @@ const translations = {
     recentInvoices: "Recent Invoices",
     businessOverview: "Business Overview",
     saveClient: "Save Client",
-    remainingAmount: "Remaining Amount",
+    remainingAmount: "Remaining Debt",
     paidAmount: "Paid Amount",
     activities: [
       "Software Development",
@@ -215,6 +217,8 @@ const translations = {
     serviceProviderPlaceholder: "اسمك أو اسم عملك",
     clientNameLabel: "اسم العميل (اختياري)",
     clientNamePlaceholder: "اسم المستلم",
+    clientPhoneLabel: "رقم هاتف العميل (اختياري)",
+    clientPhonePlaceholder: "رقم هاتف المستلم",
     businessLogo: "شعار العمل",
     uploadLogo: "ارفع شعارك",
     logoDesc: "PNG أو JPG أو SVG حتى ٢ ميجابايت",
@@ -284,7 +288,7 @@ const translations = {
     recentInvoices: "آخر الفواتير",
     businessOverview: "نظرة عامة على العمل",
     saveClient: "حفظ العميل",
-    remainingAmount: "المبلغ المتبقي",
+    remainingAmount: "المديونية المتبقية",
     paidAmount: "المبلغ المدفوع",
     activities: [
       "تطوير البرمجيات",
@@ -317,6 +321,7 @@ interface InvoiceData {
   invoiceTitle: string;
   serviceProvider: string;
   clientName: string;
+  clientPhone?: string;
   activityIndex: number;
   customActivity: string;
   logo: string | null;
@@ -471,7 +476,11 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
       
       const totalInvoiced = contactInvoices.reduce((sum, i) => sum + (Number(i.totalAmount) || 0), 0);
       const totalPaidViaPayments = contactPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-      const totalPaidInvoicesAmount = contactInvoices.filter(i => i.status === 'paid').reduce((sum, i) => sum + (Number(i.totalAmount) || 0), 0);
+      const totalPaidInvoicesAmount = contactInvoices.reduce((sum, i) => {
+        if (i.status === 'paid') return sum + (Number(i.totalAmount) || 0);
+        if (i.status === 'partially-paid') return sum + (Number(i.paidAmount) || 0);
+        return sum;
+      }, 0);
       
       const currentTotalPaid = Math.max(contact.totalPaid || 0, totalPaidViaPayments, totalPaidInvoicesAmount);
       const currentTotalInvoiced = Math.max(contact.totalInvoices || 0, totalInvoiced);
@@ -880,6 +889,9 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
           // Try to automatically find and link an existing contact if name matches exactly
           const matchingContact = contacts.find(c => c.name.toLowerCase() === value.toLowerCase());
           updated.contactId = matchingContact?.id;
+          if (matchingContact?.phone) {
+            updated.clientPhone = matchingContact.phone;
+          }
         }
         return updated;
       });
@@ -901,6 +913,9 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
         if (activeSuggestionField === 'clientName') {
           const matchingContact = contacts.find(c => c.name.toLowerCase() === value.toLowerCase());
           updated.contactId = matchingContact?.id;
+          if (matchingContact?.phone) {
+            updated.clientPhone = matchingContact.phone;
+          }
         }
         return updated;
       });
@@ -974,18 +989,35 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
       // Update contact balance and create payment record for guest
       if (invoiceToSave.contactId) {
         setContacts(prev => {
+          const oldInvoice = savedInvoices.find(inv => inv.id === currentId);
+          let amountDiff = total;
+          let paidDiff = 0;
+          let balanceDiff = 0;
+
+          const isPaid = invoiceToSave.status === 'paid';
+          const isPartial = invoiceToSave.status === 'partially-paid';
+          const currentPaid = isPaid ? total : (isPartial ? (invoiceToSave.paidAmount || 0) : 0);
+          const currentBalance = total - currentPaid;
+
+          if (oldInvoice) {
+            const oldPaid = oldInvoice.status === 'paid' ? oldInvoice.totalAmount : (oldInvoice.status === 'partially-paid' ? (oldInvoice.paidAmount || 0) : 0);
+            const oldBalance = oldInvoice.totalAmount - oldPaid;
+            
+            amountDiff = total - oldInvoice.totalAmount;
+            paidDiff = currentPaid - oldPaid;
+            balanceDiff = currentBalance - oldBalance;
+          } else {
+            paidDiff = currentPaid;
+            balanceDiff = currentBalance;
+          }
+
           const updated = prev.map(c => {
             if (c.id === invoiceToSave.contactId) {
-              const isPaid = invoiceToSave.status === 'paid';
-              const isPartial = invoiceToSave.status === 'partially-paid';
-              const paidAmount = isPaid ? total : (isPartial ? (invoiceToSave.paidAmount || 0) : 0);
-              const remainingAmount = total - paidAmount;
-              
               return { 
                 ...c, 
-                totalInvoices: (c.totalInvoices || 0) + total,
-                totalPaid: (c.totalPaid || 0) + paidAmount,
-                totalBalance: (c.totalBalance || 0) + remainingAmount
+                totalInvoices: (c.totalInvoices || 0) + amountDiff,
+                totalPaid: (c.totalPaid || 0) + paidDiff,
+                totalBalance: (c.totalBalance || 0) + balanceDiff
               };
             }
             return c;
@@ -997,28 +1029,23 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
         const isPaid = invoiceToSave.status === 'paid';
         const isPartial = invoiceToSave.status === 'partially-paid';
         const paidAmount = isPaid ? total : (isPartial ? (invoiceToSave.paidAmount || 0) : 0);
-
-        if (paidAmount > 0) {
-          // Check if payment already exists for this invoice locally
-          const guestPayments = JSON.parse(localStorage.getItem('gn_payments') || '[]');
-          const alreadyPaid = guestPayments.some((p: any) => p.invoiceId === currentId);
-          
-          if (!alreadyPaid) {
+        
+        if (paidAmount > 0 && !savedInvoices.find(inv => inv.id === currentId)) {
+          // Only auto-create payment for NEW invoices to avoid duplicates
+          setPayments(prev => {
             const newPayment: Payment = {
               id: generateId(),
-              contactId: invoiceToSave.contactId,
+              contactId: invoiceToSave.contactId!,
               invoiceId: currentId,
               amount: paidAmount,
               method: 'cash',
               date: new Date().toISOString(),
               note: `Automated payment for ${invoiceToSave.serialNumber}${isPartial ? ' (Partial)' : ''}`
             };
-            setPayments(prev => {
-              const updated = [newPayment, ...prev];
-              localStorage.setItem('gn_payments', JSON.stringify(updated));
-              return updated;
-            });
-          }
+            const updated = [newPayment, ...prev];
+            localStorage.setItem('gn_payments', JSON.stringify(updated));
+            return updated;
+          });
         }
       }
       
@@ -1042,38 +1069,70 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
       if (isActuallyFirestoreId) {
         console.log("[Firestore] Updating existing invoice:", invoiceData.id);
         const docRef = doc(db, "invoices", invoiceData.id!);
+        
+        // Fetch old data to calculate diffs
+        const oldSnap = await getDoc(docRef);
+        const oldInvoice = oldSnap.exists() ? oldSnap.data() as InvoiceData : null;
+        
         await updateDoc(docRef, cleanedData);
 
-        // Check if we need to add a payment record if status changed to paid
-        if (invoiceToSave.status === 'paid' && invoiceToSave.contactId) {
-           const paymentsRef = collection(db, "payments");
-           const q = query(paymentsRef, where("invoiceId", "==", invoiceData.id), where("userId", "==", user.uid));
-           const existingPayments = await getDocs(q);
-           
-           if (existingPayments.empty) {
-             console.log("[Firestore] Creating payment record for paid invoice");
-             await addDoc(paymentsRef, {
-               userId: user.uid,
-               contactId: invoiceToSave.contactId,
-               invoiceId: invoiceData.id,
-               amount: total,
-               method: 'cash',
-               date: serverTimestamp(),
-               note: `Automated payment for ${invoiceToSave.serialNumber}`
-             });
+        // Update contact balance if associated
+        if (invoiceToSave.contactId) {
+          const contactRef = doc(db, "clients", invoiceToSave.contactId);
+          const contactSnap = await getDoc(contactRef);
+          if (contactSnap.exists()) {
+            const currentData = contactSnap.data();
+            
+            const totalAmount = invoiceToSave.totalAmount || total;
+            const isPaid = invoiceToSave.status === 'paid';
+            const isPartial = invoiceToSave.status === 'partially-paid';
+            const currentPaid = isPaid ? totalAmount : (isPartial ? (invoiceToSave.paidAmount || 0) : 0);
+            const currentBalance = totalAmount - currentPaid;
 
-             // Update contact Paid/Balance if we just created a payment
-             const contactRef = doc(db, "clients", invoiceToSave.contactId);
-             const contactSnap = await getDoc(contactRef);
-             if (contactSnap.exists()) {
-               const currentData = contactSnap.data();
-               await updateDoc(contactRef, {
-                  totalPaid: (currentData.totalPaid || 0) + total,
-                  totalBalance: Math.max(0, (currentData.totalBalance || 0) - total),
-                  updatedAt: serverTimestamp()
-               });
-             }
-           }
+            let amountDiff = totalAmount;
+            let paidDiff = currentPaid;
+            let balanceDiff = currentBalance;
+
+            if (oldInvoice) {
+              const oldPaid = oldInvoice.status === 'paid' ? oldInvoice.totalAmount : (oldInvoice.status === 'partially-paid' ? (oldInvoice.paidAmount || 0) : 0);
+              const oldBalance = (oldInvoice.totalAmount || 0) - oldPaid;
+              
+              amountDiff = totalAmount - (oldInvoice.totalAmount || 0);
+              paidDiff = currentPaid - oldPaid;
+              balanceDiff = currentBalance - oldBalance;
+            }
+
+            await updateDoc(contactRef, {
+              totalInvoices: (currentData.totalInvoices || 0) + amountDiff,
+              totalPaid: (currentData.totalPaid || 0) + paidDiff,
+              totalBalance: (currentData.totalBalance || 0) + balanceDiff,
+              updatedAt: serverTimestamp()
+            });
+
+            // Handle payment record for updates:
+            // Create payment if we now have a paid amount (full or partial) where there was none or different
+            if (currentPaid > 0) {
+              const paymentsRef = collection(db, "payments");
+              const q = query(paymentsRef, where("invoiceId", "==", invoiceData.id), where("userId", "==", user.uid));
+              const existingPayments = await getDocs(q);
+              
+              if (existingPayments.empty) {
+                await addDoc(paymentsRef, {
+                  userId: user.uid,
+                  contactId: invoiceToSave.contactId,
+                  invoiceId: invoiceData.id,
+                  amount: currentPaid,
+                  method: 'cash',
+                  date: serverTimestamp(),
+                  note: `Automated payment for ${invoiceToSave.serialNumber}${isPartial ? ' (Partial)' : ''}`
+                });
+              } else if (isPaid && oldInvoice?.status !== 'paid') {
+                  // If it changed to fully paid, we might want to update the existing payment or add a record for the rest
+                  // For simplicity, if we already have a payment record, we assume it's handled or we'd need more complex logic.
+                  // But at least now we create the initial record for partials too.
+              }
+            }
+          }
         }
       } else {
         console.log("[Firestore] Adding new invoice");
@@ -1842,6 +1901,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
       serialNumber,
       serviceProvider: invoiceData.serviceProvider || '',
       clientName: contact.name,
+      clientPhone: contact.phone || '',
       contactId: contact.id,
       activityIndex: invoiceData.activityIndex || 0,
       customActivity: invoiceData.customActivity || '',
@@ -1981,13 +2041,13 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                         </button>
                       </div>
                       <div className="text-right">
-                        <p className="font-black text-lg">{t.currencySymbol}{invoice.totalAmount.toLocaleString()}</p>
+                        <p className="font-black text-lg">{t.currencySymbol}{(invoice.status === 'partially-paid' ? (invoice.totalAmount - (invoice.paidAmount || 0)) : (invoice.status === 'paid' ? 0 : invoice.totalAmount)).toLocaleString()}</p>
                         <p className={cn("text-[10px] font-black uppercase", 
                           invoice.status === 'paid' ? "text-emerald-500" : 
-                          invoice.status === 'partially-paid' ? "text-blue-500" :
+                          invoice.status === 'partially-paid' ? "text-red-500" :
                           "text-amber-500")}>
                           {invoice.status === 'paid' ? (lang === 'en' ? 'Paid' : 'مدفوعة') : 
-                           invoice.status === 'partially-paid' ? (lang === 'en' ? 'Partial' : 'باقي') :
+                           invoice.status === 'partially-paid' ? (lang === 'en' ? 'Remaining Debt' : 'متبقي مديونية') :
                            (lang === 'en' ? 'Pending' : 'قيد الانتظار')}
                         </p>
                       </div>
@@ -2605,7 +2665,24 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                 </p>
                 <p className="mt-1 text-sm text-[#666666] dark:text-[#94A3B8]">
                   {inv.serviceProvider || (inv.activityIndex !== undefined && inv.activityIndex === t.activities.length - 1 ? inv.customActivity : (inv.activityIndex !== undefined ? t.activities[inv.activityIndex] : ''))}
+                  {inv.clientName && ` • ${inv.clientName}`}
+                  {inv.clientPhone && ` (${inv.clientPhone})`}
                 </p>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className={cn(
+                    "text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-widest",
+                    inv.status === 'paid' ? "bg-emerald-100 text-emerald-600" : 
+                    inv.status === 'partially-paid' ? "bg-red-100 text-red-600" :
+                    "bg-orange-100 text-orange-600"
+                  )}>
+                    {inv.status === 'paid' ? (lang === 'en' ? 'Paid' : 'مدفوعة') : 
+                     inv.status === 'partially-paid' ? (lang === 'en' ? 'Debt' : 'متبقي مديونية') :
+                     (lang === 'en' ? 'Pending' : 'قيد الانتظار')}
+                  </span>
+                  <span className="text-sm font-bold text-[#1A1A1A] dark:text-[#E2E8F0]">
+                    {t.currencySymbol}{(inv.status === 'partially-paid' ? (inv.totalAmount - (inv.paidAmount || 0)) : (inv.status === 'paid' ? 0 : inv.totalAmount)).toLocaleString()}
+                  </span>
+                </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 {inv.status !== 'paid' && (
@@ -3099,7 +3176,12 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                           {contacts.slice(0, 5).map(c => (
                             <button 
                               key={c.id} 
-                              onClick={() => setInvoiceData(prev => ({ ...prev, clientName: c.name, contactId: c.id }))}
+                              onClick={() => setInvoiceData(prev => ({ 
+                                ...prev, 
+                                clientName: c.name, 
+                                clientPhone: c.phone || '',
+                                contactId: c.id 
+                              }))}
                               className={cn(
                                 "whitespace-nowrap px-3 py-1 rounded-full text-[10px] font-black border transition-all",
                                 invoiceData.contactId === c.id 
@@ -3121,6 +3203,31 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                         onBlur={() => setTimeout(() => setActiveSuggestionField(null), 200)}
                       />
                       {activeSuggestionField === 'clientName' && filteredSuggestions.length > 0 && (
+                        <div className="absolute z-50 w-full mt-1 bg-white dark:bg-[#0F172A] border border-[#1A1A1A]/10 dark:border-white/10 rounded-xl shadow-xl overflow-hidden">
+                          {filteredSuggestions.map((s, i) => (
+                            <button 
+                              key={i} 
+                              onClick={() => selectSuggestion(s)}
+                              className="w-full px-4 py-2 text-left text-sm hover:bg-[#F5F5F5] dark:hover:bg-white/5 transition-colors"
+                            >
+                              {s}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="relative">
+                      <Label>{t.clientPhoneLabel}</Label>
+                      <Input 
+                        placeholder={t.clientPhonePlaceholder}
+                        value={invoiceData.clientPhone || ''}
+                        onChange={(e) => {
+                          handleFieldChangeWithSuggestions('clientPhone', e.target.value);
+                        }}
+                        onBlur={() => setTimeout(() => setActiveSuggestionField(null), 200)}
+                      />
+                      {activeSuggestionField === 'clientPhone' && filteredSuggestions.length > 0 && (
                         <div className="absolute z-50 w-full mt-1 bg-white dark:bg-[#0F172A] border border-[#1A1A1A]/10 dark:border-white/10 rounded-xl shadow-xl overflow-hidden">
                           {filteredSuggestions.map((s, i) => (
                             <button 
@@ -3201,10 +3308,13 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                               onClick={() => {
                                 setInvoiceData(prev => {
                                   const newData = { ...prev, status: s };
-                                  if (s === 'partially-paid' && (prev.paidAmount === undefined || prev.paidAmount === total)) {
-                                    // If switching to partial and no specific paid amount yet,
-                                    // default to half or just trigger the input visibility
-                                    newData.paidAmount = total > 0 ? total : 0;
+                                  if (s === 'partially-paid') {
+                                    // Default to 0 paid if it was pending/overdue, or keep if it was already something
+                                    if (prev.status === 'paid') {
+                                      newData.paidAmount = total;
+                                    } else if (prev.status === 'pending' || prev.status === 'overdue') {
+                                      newData.paidAmount = 0;
+                                    }
                                   } else if (s === 'paid') {
                                     newData.paidAmount = total;
                                   } else if (s === 'pending' || s === 'overdue') {
@@ -3218,14 +3328,14 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                                 invoiceData.status === s
                                   ? (s === 'paid' ? "bg-emerald-500 text-white border-emerald-500 shadow-lg shadow-emerald-500/20" : 
                                      s === 'pending' ? "bg-orange-500 text-white border-orange-500 shadow-lg shadow-orange-500/20" : 
-                                     s === 'partially-paid' ? "bg-blue-500 text-white border-blue-500 shadow-lg shadow-blue-500/20" :
+                                     s === 'partially-paid' ? "bg-red-500 text-white border-red-500 shadow-lg shadow-red-500/20" :
                                      "bg-red-500 text-white border-red-500 shadow-lg shadow-red-500/20")
                                   : "bg-white dark:bg-white/5 border-slate-200 dark:border-white/10 text-[#666666]"
                               )}
                             >
                               {s === 'paid' ? (lang === 'en' ? 'Paid' : 'مدفوعة') : 
-                               s === 'pending' ? (lang === 'en' ? 'Pending' : 'قيد الانتظار') : 
-                               s === 'partially-paid' ? (lang === 'en' ? 'Partial' : 'باقي') :
+                               s === 'pending' ? (lang === 'en' ? 'Unpaid' : 'غير مدفوعة') : 
+                               s === 'partially-paid' ? (lang === 'en' ? 'Debt' : 'متبقي مديونية') :
                                (lang === 'en' ? 'Overdue' : 'متأخرة')}
                             </button>
                           ))}
@@ -3233,36 +3343,60 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
 
                         {invoiceData.status === 'partially-paid' && (
                           <div className="mt-4 p-5 rounded-2xl bg-blue-50/80 dark:bg-blue-500/10 border border-blue-100 dark:border-blue-500/20 active-glow">
-                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                              <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-xl bg-blue-500 text-white flex items-center justify-center">
-                                  <Wallet size={20} />
-                                </div>
-                                <div>
-                                  <Label className="text-blue-900 dark:text-blue-100 mb-0 text-base font-black leading-none">{t.remainingAmount}</Label>
-                                  <p className="text-[9px] text-blue-600/70 dark:text-blue-400/70 font-bold uppercase tracking-widest mt-1">
-                                    {lang === 'en' ? 'CLIENT DEBT' : 'مديونية العميل'}
-                                  </p>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                              <div className="space-y-2">
+                                <Label className="text-blue-900 dark:text-blue-100 text-sm font-black flex items-center gap-2">
+                                  <Wallet size={16} className="text-blue-500" />
+                                  {t.paidAmount}
+                                </Label>
+                                <div className="relative">
+                                  <span className={cn("absolute top-1/2 -translate-y-1/2 text-blue-400 font-bold text-xs", lang === 'ar' ? 'right-3' : 'left-3')}>
+                                    {t.currencySymbol}
+                                  </span>
+                                  <input 
+                                    type="number"
+                                    value={invoiceData.paidAmount ?? 0}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      const paid = val === '' ? 0 : Number(val);
+                                      setInvoiceData(prev => ({ ...prev, paidAmount: paid }));
+                                    }}
+                                    className={cn(
+                                      "w-full py-2.5 rounded-xl bg-white dark:bg-[#0F172A] border-2 border-blue-100 dark:border-blue-500/20 text-blue-700 dark:text-blue-400 font-bold text-lg focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all",
+                                      lang === 'ar' ? 'pr-8 pl-3 text-left' : 'pl-8 pr-3'
+                                    )}
+                                    placeholder="0"
+                                  />
                                 </div>
                               </div>
-                              <div className="relative w-full md:w-48">
-                                <span className={cn("absolute top-1/2 -translate-y-1/2 text-blue-400 font-black", lang === 'ar' ? 'right-4 text-sm' : 'left-4 text-sm')}>
-                                  {t.currencySymbol}
-                                </span>
-                                <input 
-                                  type="number"
-                                  value={total - (invoiceData.paidAmount ?? total)}
-                                  onChange={(e) => {
-                                    const remaining = Math.max(0, Number(e.target.value) || 0);
-                                    const paid = Math.max(0, total - remaining);
-                                    setInvoiceData(prev => ({ ...prev, paidAmount: paid }));
-                                  }}
-                                  className={cn(
-                                    "w-full py-3 rounded-xl bg-white dark:bg-[#0F172A] border-2 border-blue-100 dark:border-blue-500/20 text-blue-700 dark:text-blue-400 font-black text-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all",
-                                    lang === 'ar' ? 'pr-10 pl-4 text-left' : 'pl-10 pr-4'
-                                  )}
-                                  placeholder="0"
-                                />
+
+                              <div className="space-y-2">
+                                <Label className="text-blue-900 dark:text-blue-100 text-sm font-black flex items-center gap-2">
+                                  <ArrowDownLeft size={16} className="text-blue-500" />
+                                  {t.remainingAmount}
+                                </Label>
+                                <div className="relative">
+                                  <span className={cn("absolute top-1/2 -translate-y-1/2 text-blue-400 font-bold text-xs", lang === 'ar' ? 'right-3' : 'left-3')}>
+                                    {t.currencySymbol}
+                                  </span>
+                                  <input 
+                                    type="number"
+                                    value={invoiceData.paidAmount !== undefined ? Number((total - invoiceData.paidAmount).toFixed(2)) : 0}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      const remaining = val === '' ? 0 : Number(val);
+                                      setInvoiceData(prev => ({ ...prev, paidAmount: Number((total - remaining).toFixed(2)) }));
+                                    }}
+                                    className={cn(
+                                      "w-full py-2.5 rounded-xl bg-white dark:bg-[#0F172A] border-2 border-blue-100 dark:border-blue-500/20 text-blue-700 dark:text-blue-400 font-bold text-lg focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all",
+                                      lang === 'ar' ? 'pr-8 pl-3 text-left' : 'pl-8 pr-3'
+                                    )}
+                                    placeholder="0"
+                                  />
+                                </div>
+                                <p className="text-[10px] text-blue-600/70 dark:text-blue-400/70 font-bold uppercase tracking-widest mt-1">
+                                  {lang === 'en' ? 'CLIENT DEBT' : 'مديونية العميل'}
+                                </p>
                               </div>
                             </div>
                           </div>
@@ -3511,18 +3645,18 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                       </div>
                       {!isGenerating && (
                         <div className={cn("mt-4 flex no-print", lang === 'ar' ? 'justify-start' : 'justify-end')}>
-                          <span className={cn(
-                            "px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-[0.2em] shadow-sm",
-                            invoiceData.status === 'paid' ? "bg-emerald-500 text-white" : 
-                            invoiceData.status === 'pending' ? "bg-orange-500 text-white" : 
-                            invoiceData.status === 'partially-paid' ? "bg-blue-500 text-white" :
-                            "bg-red-500 text-white"
-                          )}>
-                            {invoiceData.status === 'paid' ? (lang === 'en' ? 'Paid' : 'مدفوعة') : 
-                             invoiceData.status === 'pending' ? (lang === 'en' ? 'Pending' : 'قيد الانتظار') : 
-                             invoiceData.status === 'partially-paid' ? (lang === 'en' ? 'Partial' : 'باقي') :
-                             (lang === 'en' ? 'Overdue' : 'متأخرة')}
-                          </span>
+                              <span className={cn(
+                                "px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-[0.2em] shadow-sm",
+                                invoiceData.status === 'paid' ? "bg-emerald-500 text-white" : 
+                                invoiceData.status === 'pending' ? "bg-orange-500 text-white" : 
+                                invoiceData.status === 'partially-paid' ? "bg-red-500 text-white" :
+                                "bg-red-500 text-white"
+                              )}>
+                                {invoiceData.status === 'paid' ? (lang === 'en' ? 'Paid' : 'مدفوعة') : 
+                                 invoiceData.status === 'pending' ? (lang === 'en' ? 'Pending' : 'قيد الانتظار') : 
+                                 invoiceData.status === 'partially-paid' ? (lang === 'en' ? 'Remaining Debt' : 'متبقي مديونية') :
+                                 (lang === 'en' ? 'Overdue' : 'متأخرة')}
+                              </span>
                         </div>
                       )}
                     </div>
@@ -3548,6 +3682,12 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                     <div className={cn("", lang === 'ar' ? 'md:text-left' : 'md:text-right')}>
                       <h3 className={cn("text-xs font-bold uppercase text-[#999999] dark:text-[#94A3B8] mb-4", lang === 'en' && "tracking-[0.2em]")}>{t.billedTo}</h3>
                       <p className="text-lg font-bold text-[#1A1A1A] dark:text-[#E2E8F0]">{invoiceData.clientName || t.client}</p>
+                      {invoiceData.clientPhone && (
+                        <p className="text-sm font-medium text-[#1A1A1A] dark:text-[#E2E8F0] mt-1 flex items-center gap-2 justify-end">
+                          <Phone size={12} className="text-[#999999]" />
+                          {invoiceData.clientPhone}
+                        </p>
+                      )}
                       <p className="text-sm text-[#666666] dark:text-[#94A3B8]">{t.recipient}</p>
                     </div>
                   </div>
@@ -3586,7 +3726,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                         <span className="text-2xl font-black text-[#1A1A1A] dark:text-[#E2E8F0]">{t.currencySymbol}{total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                       </div>
                       
-                      {invoiceData.status === 'partially-paid' && (
+                      {invoiceData.status === 'partially-paid' && !isGenerating && (
                         <div className="space-y-2 mt-4 pt-4 border-t border-dashed border-slate-200 dark:border-white/10 text-right">
                           <div className="flex justify-between text-sm text-[#666666] dark:text-[#94A3B8]">
                             <span>{t.paidAmount}</span>
