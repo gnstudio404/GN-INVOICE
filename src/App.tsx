@@ -159,6 +159,7 @@ const translations = {
     login: "Login with Google",
     logout: "Logout",
     saveError: "Failed to save invoice.",
+    saveChanges: "Save Changes",
     deleteSuccess: "Invoice deleted.",
     deleteError: "Failed to delete invoice.",
     dashboard: "Dashboard",
@@ -257,6 +258,7 @@ const translations = {
     login: "تسجيل الدخول باستخدام جوجل",
     logout: "تسجيل الخروج",
     saveError: "فشل حفظ الفاتورة.",
+    saveChanges: "حفظ التغييرات",
     deleteSuccess: "تم حذف الفاتورة.",
     deleteError: "فشل حذف الفاتورة.",
     dashboard: "لوحة التحكم",
@@ -449,7 +451,8 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [businessInfo, setBusinessInfo] = useState<BusinessInfo | null>(null);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'invoices' | 'contacts' | 'payments' | 'expenses' | 'profile' | 'subscribers'>(() => (localStorage.getItem('gn_active_tab') as any) || 'dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'invoices' | 'contacts' | 'payments' | 'expenses' | 'profile' | 'subscribers' | 'history'>(() => (localStorage.getItem('gn_active_tab') as any) || 'dashboard');
+  const [showSaveSuccess, setShowSaveSuccess] = useState(false);
   
   const contactsWithAggregatedDebt = useMemo(() => {
     return contacts.map(contact => {
@@ -521,6 +524,8 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     totalAmount: 0,
     status: 'pending'
   });
+
+  const total = invoiceData.items.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
 
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -866,6 +871,9 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
         }
         return updated;
       });
+      if (field === 'invoiceTitle') {
+        setSaveNameInput(value);
+      }
     }
     
     setActiveSuggestionField(field);
@@ -907,7 +915,8 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
   };
 
   const handleSaveToHistory = async () => {
-    const finalTitle = saveNameInput.trim() || (lang === 'ar' ? translations.ar.invoiceTitleDefault : translations.en.invoiceTitleDefault);
+    // If we're editing an invoice, we might want to keep its current title if saveNameInput is empty
+    const finalTitle = saveNameInput.trim() || invoiceData.invoiceTitle || (lang === 'ar' ? translations.ar.invoiceTitleDefault : translations.en.invoiceTitleDefault);
     const isNewInvoice = !invoiceData.id;
     const currentId = invoiceData.id || generateId();
     
@@ -1000,6 +1009,9 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
           }
         }
       }
+      
+      setShowSaveSuccess(true);
+      setTimeout(() => setShowSaveSuccess(false), 3000);
       return;
     }
 
@@ -1097,7 +1109,8 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
       }
       
       // Explicit success feedback for the user
-      alert(lang === 'en' ? "Successfully saved to your Google Cloud!" : "تم الحفظ بنجاح في سحابة جوجل الخاصة بك!");
+      setShowSaveSuccess(true);
+      setTimeout(() => setShowSaveSuccess(false), 3000);
       
     } catch (err) {
       console.error("[Firestore] Error saving invoice:", err);
@@ -1212,6 +1225,10 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
       setSavedInvoices(prev => {
         const updated = prev.filter(inv => inv.id !== id);
         localStorage.setItem('gn_invoice_history', JSON.stringify(updated));
+        
+        setShowSaveSuccess(true);
+        setTimeout(() => setShowSaveSuccess(false), 3000);
+        
         return updated;
       });
       return;
@@ -1560,7 +1577,6 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
 
   const hasLocalData = localStorage.getItem('gn_contacts') || localStorage.getItem('gn_invoice_history');
 
-  const total = invoiceData.items.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
 
   const handleAddItem = () => {
     setInvoiceData(prev => ({
@@ -1743,6 +1759,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
 
   const handleLoadInvoice = (invoice: InvoiceData) => {
     setInvoiceData(invoice);
+    setSaveNameInput(invoice.invoiceTitle || '');
     setActiveTab('invoices');
     setIsPreviewMode(false);
     setShowHistory(false);
@@ -2511,6 +2528,101 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     </motion.div>
   );
 
+  const HistoryContent = () => (
+    <div className="space-y-6">
+      <div className="mb-6 flex flex-col gap-4 rounded-2xl bg-[#F9F9F9] dark:bg-[#060B16] p-4 border border-[#F0F0F0] dark:border-white/5">
+        {!user ? (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="rounded-full bg-blue-100 dark:bg-blue-900/30 p-2 text-blue-600 dark:text-blue-400">
+                <CloudOff size={20} />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-[#1A1A1A] dark:text-[#E2E8F0]">
+                  {lang === 'ar' ? 'المزامنة السحابية غير مفعلة' : 'Cloud Sync Disabled'}
+                </p>
+                <p className="text-[10px] text-[#666666] dark:text-[#94A3B8]">
+                  {lang === 'ar' ? 'سجل دخولك لحفظ فواتيرك للأبد' : 'Login to save your invoices across devices'}
+                </p>
+              </div>
+            </div>
+            <Button 
+              variant="primary" 
+              size="sm" 
+              onClick={() => navigate('/login')}
+              className="w-full sm:w-auto text-xs"
+            >
+              {t.login}
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="rounded-full bg-green-100 dark:bg-green-900/30 p-2 text-green-600 dark:text-green-400">
+                <CheckCircle2 size={20} />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-[#1A1A1A] dark:text-[#E2E8F0]">
+                  {lang === 'ar' ? 'تم تفعيل المزامنة السحابية' : 'Cloud Sync Enabled'}
+                </p>
+                <p className="text-[10px] text-[#666666] dark:text-[#94A3B8]">
+                  {lang === 'ar' ? `مرحباً ${user.displayName}` : `Welcome ${user.displayName}`}
+                </p>
+              </div>
+            </div>
+            <Button variant="ghost" size="sm" onClick={handleLogout} className="text-red-400 hover:text-red-500">
+              {t.logout}
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {savedInvoices.length === 0 ? (
+        <div className="py-12 text-center text-[#999999] dark:text-[#94A3B8]">
+          <History size={48} className="mx-auto mb-4 opacity-20" />
+          <p>{t.noHistory}</p>
+        </div>
+      ) : (
+        <div className="grid gap-4">
+          {savedInvoices.map((inv) => (
+            <div key={inv.id} className="flex items-center justify-between rounded-2xl border border-[#F0F0F0] dark:border-white/5 p-4 transition-colors hover:bg-[#F9F9F9] dark:hover:bg-[#060B16]">
+              <div className="flex-1">
+                <h3 className="font-bold text-[#1A1A1A] dark:text-[#E2E8F0]">{inv.invoiceTitle}</h3>
+                <p className="text-xs text-[#999999] dark:text-[#94A3B8]">
+                  {t.savedAt}: {new Date(inv.savedAt!).toLocaleString(lang === 'ar' ? 'ar-EG' : 'en-US')}
+                </p>
+                <p className="mt-1 text-sm text-[#666666] dark:text-[#94A3B8]">
+                  {inv.serviceProvider || (inv.activityIndex !== undefined && inv.activityIndex === t.activities.length - 1 ? inv.customActivity : (inv.activityIndex !== undefined ? t.activities[inv.activityIndex] : ''))}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {inv.status !== 'paid' && (
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => handleMarkAsPaid(inv)}
+                    className="bg-emerald-50 text-emerald-600 border-emerald-100 hover:bg-emerald-100 font-bold h-9 text-[10px] uppercase tracking-widest"
+                  >
+                    {lang === 'en' ? 'Mark Paid' : 'تم الدفع'}
+                  </Button>
+                )}
+                <Button variant="outline" size="sm" onClick={() => handleLoadInvoice(inv)} className="h-9 text-[10px] uppercase tracking-widest">
+                  {t.edit}
+                </Button>
+                <Button variant="outline" size="icon" onClick={() => handleDownloadHistoryInvoice(inv)} className="h-9 w-9 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 border-emerald-100 dark:border-emerald-500/20">
+                  <Download size={18} />
+                </Button>
+                <Button variant="ghost" size="icon" onClick={() => confirmDelete(inv.id!)} className="h-10 w-10 text-red-400 hover:text-red-600">
+                  <Trash2 size={20} />
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
   const ProfileView = () => {
     const [localInfo, setLocalInfo] = useState<BusinessInfo>(businessInfo || { name: '', phone: '', logo: null, activityIndex: 0, customActivity: '' });
     const [isSaving, setIsSaving] = useState(false);
@@ -2730,7 +2842,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
 
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto mt-6">
           <SidebarNavItem icon={<LayoutDashboard size={20} />} label={t.dashboard} active={activeTab === 'dashboard'} onClick={() => { setActiveTab('dashboard'); setIsPreviewMode(false); }} />
-          <SidebarNavItem icon={<FileText size={20} />} label={t.invoice} active={activeTab === 'invoices'} onClick={() => { setActiveTab('invoices'); setIsPreviewMode(false); }} />
+          <SidebarNavItem icon={<FileText size={20} />} label={lang === 'en' ? 'Invoices' : 'الفواتير'} active={activeTab === 'history'} onClick={() => { setActiveTab('history'); setIsPreviewMode(false); }} />
           <SidebarNavItem icon={<Users size={20} />} label={t.clients} active={activeTab === 'contacts'} onClick={() => { setActiveTab('contacts'); setIsPreviewMode(false); }} />
           <SidebarNavItem icon={<Wallet size={20} />} label={lang === 'en' ? 'Payments' : 'المدفوعات'} active={activeTab === 'payments'} onClick={() => { setActiveTab('payments'); setIsPreviewMode(false); }} />
           <SidebarNavItem icon={<ArrowDownLeft size={20} />} label={lang === 'en' ? 'Expenses' : 'المصاريف'} active={activeTab === 'expenses'} onClick={() => { setActiveTab('expenses'); setIsPreviewMode(false); }} />
@@ -3041,7 +3153,21 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                           {(['pending', 'paid', 'overdue', 'partially-paid'] as const).map(s => (
                             <button 
                               key={s}
-                              onClick={() => setInvoiceData(prev => ({ ...prev, status: s }))}
+                              onClick={() => {
+                                setInvoiceData(prev => {
+                                  const newData = { ...prev, status: s };
+                                  if (s === 'partially-paid' && (prev.paidAmount === undefined || prev.paidAmount === total)) {
+                                    // If switching to partial and no specific paid amount yet,
+                                    // default to half or just trigger the input visibility
+                                    newData.paidAmount = total > 0 ? total : 0;
+                                  } else if (s === 'paid') {
+                                    newData.paidAmount = total;
+                                  } else if (s === 'pending' || s === 'overdue') {
+                                    newData.paidAmount = 0;
+                                  }
+                                  return newData;
+                                });
+                              }}
                               className={cn(
                                 "flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all",
                                 invoiceData.status === s
@@ -3061,44 +3187,40 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                         </div>
 
                         {invoiceData.status === 'partially-paid' && (
-                          <motion.div 
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: 'auto' }}
-                            className="mt-6 p-6 rounded-[2rem] bg-blue-50/50 dark:bg-blue-500/5 border border-blue-100 dark:border-blue-500/20 overflow-hidden"
-                          >
-                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                              <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 rounded-2xl bg-blue-500 text-white flex items-center justify-center shadow-lg shadow-blue-500/20">
-                                  <Wallet size={24} />
+                          <div className="mt-4 p-5 rounded-2xl bg-blue-50/80 dark:bg-blue-500/10 border border-blue-100 dark:border-blue-500/20 active-glow">
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-blue-500 text-white flex items-center justify-center">
+                                  <Wallet size={20} />
                                 </div>
                                 <div>
-                                  <Label className="text-blue-900 dark:text-blue-100 mb-0.5 text-lg font-black">{t.remainingAmount}</Label>
-                                  <p className="text-[10px] text-blue-600/60 dark:text-blue-400/60 font-bold uppercase tracking-[0.1em]">
-                                    {lang === 'en' ? 'THIS AMOUNT WILL BE ADDED TO CLIENT DEBT' : 'هذا المبلغ سيتم إضافته إلى مديونية العميل'}
+                                  <Label className="text-blue-900 dark:text-blue-100 mb-0 text-base font-black leading-none">{t.remainingAmount}</Label>
+                                  <p className="text-[9px] text-blue-600/70 dark:text-blue-400/70 font-bold uppercase tracking-widest mt-1">
+                                    {lang === 'en' ? 'CLIENT DEBT' : 'مديونية العميل'}
                                   </p>
                                 </div>
                               </div>
-                              <div className="relative w-full md:w-64">
-                                <span className={cn("absolute top-1/2 -translate-y-1/2 text-blue-400 font-black text-lg", lang === 'ar' ? 'right-4' : 'left-4')}>
+                              <div className="relative w-full md:w-48">
+                                <span className={cn("absolute top-1/2 -translate-y-1/2 text-blue-400 font-black", lang === 'ar' ? 'right-4 text-sm' : 'left-4 text-sm')}>
                                   {t.currencySymbol}
                                 </span>
                                 <input 
                                   type="number"
-                                  value={invoiceData.totalAmount - (invoiceData.paidAmount ?? invoiceData.totalAmount)}
+                                  value={total - (invoiceData.paidAmount ?? total)}
                                   onChange={(e) => {
                                     const remaining = Math.max(0, Number(e.target.value) || 0);
                                     const paid = Math.max(0, total - remaining);
                                     setInvoiceData(prev => ({ ...prev, paidAmount: paid }));
                                   }}
                                   className={cn(
-                                    "w-full py-4 rounded-2xl bg-white dark:bg-[#0F172A] border-2 border-blue-200 dark:border-blue-500/30 text-blue-700 dark:text-blue-400 font-black text-2xl focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all",
-                                    lang === 'ar' ? 'pr-12 pl-4 text-left' : 'pl-12 pr-4'
+                                    "w-full py-3 rounded-xl bg-white dark:bg-[#0F172A] border-2 border-blue-100 dark:border-blue-500/20 text-blue-700 dark:text-blue-400 font-black text-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all",
+                                    lang === 'ar' ? 'pr-10 pl-4 text-left' : 'pl-10 pr-4'
                                   )}
                                   placeholder="0"
                                 />
                               </div>
                             </div>
-                          </motion.div>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -3228,22 +3350,47 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                         {formError}
                       </motion.div>
                     )}
-                    <Button 
-                      onClick={handleGenerate}
-                      disabled={isGenerating}
-                      className="w-full py-7 text-base font-bold tracking-wide uppercase"
-                    >
-                      {isGenerating ? (
-                        <div className="flex items-center gap-3">
-                          <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                          {t.generating}
-                        </div>
-                      ) : (
+                    {showSaveSuccess && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0 }}
+                        className="mb-4 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 p-4 rounded-xl flex items-center gap-2 border border-emerald-100 dark:border-emerald-500/20 font-bold"
+                      >
+                        <CheckCircle2 size={18} />
+                        {lang === 'ar' ? 'تم الحفظ بنجاح!' : 'Saved successfully!'}
+                      </motion.div>
+                    )}
+                    <div className="flex flex-col sm:flex-row gap-4">
+                      <Button 
+                        onClick={handleGenerate}
+                        disabled={isGenerating}
+                        className="flex-1 py-7 text-base font-bold tracking-wide uppercase"
+                      >
+                        {isGenerating ? (
+                          <div className="flex items-center gap-3">
+                            <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                            {t.generating}
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            {t.generate} <ChevronRight size={22} className={lang === 'ar' ? 'rotate-180' : ''} />
+                          </div>
+                        )}
+                      </Button>
+
+                      <Button 
+                        variant="secondary"
+                        onClick={() => invoiceData.id ? handleSaveToHistory() : setShowSaveModal(true)}
+                        disabled={isSavingToFirestore}
+                        className="flex-1 py-7 text-base font-bold tracking-wide uppercase bg-slate-100 dark:bg-white/10 text-[#1A1A1A] dark:text-white border-none hover:bg-slate-200 dark:hover:bg-white/20"
+                      >
                         <div className="flex items-center gap-2">
-                          {t.generate} <ChevronRight size={22} className={lang === 'ar' ? 'rotate-180' : ''} />
+                          <Save size={20} />
+                          {invoiceData.id ? t.saveChanges : t.saveToHistory}
                         </div>
-                      )}
-                    </Button>
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -3476,6 +3623,21 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
             <SubscribersView />
           ) : activeTab === 'profile' ? (
             <ProfileView />
+          ) : activeTab === 'history' ? (
+            <div className="space-y-8">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-3xl font-black">{t.history}</h2>
+                  <p className="text-[#666666] dark:text-[#94A3B8]">{lang === 'en' ? 'Manage and track all your recorded business transactions' : 'إدارة وتتبع جميع معاملاتك التجارية المسجلة'}</p>
+                </div>
+                <Button onClick={() => { setActiveTab('invoices'); setIsPreviewMode(false); }} className="gap-2">
+                  <Plus size={18} /> {lang === 'en' ? 'New Invoice' : 'فاتورة جديدة'}
+                </Button>
+              </div>
+              <div className="bg-white dark:bg-[#0F172A] border-2 border-[#1A1A1A] dark:border-white/10 rounded-[40px] p-8 shadow-[8px_8px_0px_0px_rgba(26,26,26,1)] dark:shadow-none">
+                <HistoryContent />
+              </div>
+            </div>
           ) : (
             <DashboardView />
           )}
@@ -3515,96 +3677,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                 </Button>
               </div>
               <div className="max-h-[60vh] overflow-y-auto p-6">
-                <div className="mb-6 flex flex-col gap-4 rounded-2xl bg-[#F9F9F9] dark:bg-[#060B16] p-4 border border-[#F0F0F0] dark:border-white/5">
-                  {!user ? (
-                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                      <div className="flex items-center gap-3">
-                        <div className="rounded-full bg-blue-100 dark:bg-blue-900/30 p-2 text-blue-600 dark:text-blue-400">
-                          <CloudOff size={20} />
-                        </div>
-                        <div>
-                          <p className="text-sm font-bold text-[#1A1A1A] dark:text-[#E2E8F0]">
-                            {lang === 'ar' ? 'المزامنة السحابية غير مفعلة' : 'Cloud Sync Disabled'}
-                          </p>
-                          <p className="text-[10px] text-[#666666] dark:text-[#94A3B8]">
-                            {lang === 'ar' ? 'سجل دخولك لحفظ فواتيرك للأبد' : 'Login to save your invoices across devices'}
-                          </p>
-                        </div>
-                      </div>
-                      <Button 
-                        variant="primary" 
-                        size="sm" 
-                        onClick={() => navigate('/login')}
-                        className="w-full sm:w-auto text-xs"
-                      >
-                        {t.login}
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="rounded-full bg-green-100 dark:bg-green-900/30 p-2 text-green-600 dark:text-green-400">
-                          <CheckCircle2 size={20} />
-                        </div>
-                        <div>
-                          <p className="text-sm font-bold text-[#1A1A1A] dark:text-[#E2E8F0]">
-                            {lang === 'ar' ? 'تم تفعيل المزامنة السحابية' : 'Cloud Sync Enabled'}
-                          </p>
-                          <p className="text-[10px] text-[#666666] dark:text-[#94A3B8]">
-                            {lang === 'ar' ? `مرحباً ${user.displayName}` : `Welcome ${user.displayName}`}
-                          </p>
-                        </div>
-                      </div>
-                      <Button variant="ghost" size="sm" onClick={handleLogout} className="text-red-400 hover:text-red-500">
-                        {t.logout}
-                      </Button>
-                    </div>
-                  )}
-                </div>
-
-                {savedInvoices.length === 0 ? (
-                  <div className="py-12 text-center text-[#999999] dark:text-[#94A3B8]">
-                    <History size={48} className="mx-auto mb-4 opacity-20" />
-                    <p>{t.noHistory}</p>
-                  </div>
-                ) : (
-                  <div className="grid gap-4">
-                    {savedInvoices.map((inv) => (
-                      <div key={inv.id} className="flex items-center justify-between rounded-2xl border border-[#F0F0F0] dark:border-white/5 p-4 transition-colors hover:bg-[#F9F9F9] dark:hover:bg-[#060B16]">
-                        <div className="flex-1">
-                          <h3 className="font-bold text-[#1A1A1A] dark:text-[#E2E8F0]">{inv.invoiceTitle}</h3>
-                          <p className="text-xs text-[#999999] dark:text-[#94A3B8]">
-                            {t.savedAt}: {new Date(inv.savedAt!).toLocaleString(lang === 'ar' ? 'ar-EG' : 'en-US')}
-                          </p>
-                          <p className="mt-1 text-sm text-[#666666] dark:text-[#94A3B8]">
-                            {inv.serviceProvider || (inv.activityIndex === t.activities.length - 1 ? inv.customActivity : t.activities[inv.activityIndex])}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {inv.status !== 'paid' && (
-                            <Button 
-                              variant="outline" 
-                              size="sm" 
-                              onClick={() => handleMarkAsPaid(inv)}
-                              className="bg-emerald-50 text-emerald-600 border-emerald-100 hover:bg-emerald-100 font-bold"
-                            >
-                              {lang === 'en' ? 'Mark Paid' : 'تم الدفع'}
-                            </Button>
-                          )}
-                          <Button variant="outline" size="sm" onClick={() => handleLoadInvoice(inv)}>
-                            {t.edit}
-                          </Button>
-                          <Button variant="outline" size="icon" onClick={() => handleDownloadHistoryInvoice(inv)} className="h-9 w-9 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 border-emerald-100 dark:border-emerald-500/20">
-                            <Download size={18} />
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={() => confirmDelete(inv.id!)} className="h-10 w-10 text-red-400 hover:text-red-600">
-                            <Trash2 size={20} />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <HistoryContent />
               </div>
             </motion.div>
           </div>
