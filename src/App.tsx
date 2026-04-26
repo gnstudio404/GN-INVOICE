@@ -12,7 +12,8 @@ import { jsPDF } from 'jspdf';
 import { db, auth, googleProvider } from './lib/firebase';
 import { 
   onAuthStateChanged, 
-  signInWithPopup, 
+  signInWithRedirect, 
+  getRedirectResult,
   signOut, 
   User 
 } from 'firebase/auth';
@@ -474,6 +475,17 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
 
   // Firebase Auth and Firestore listener
   useEffect(() => {
+    // 1. Handle redirect result
+    const checkRedirect = async () => {
+      try {
+        await getRedirectResult(auth);
+      } catch (error: any) {
+        console.error("Redirect auth error:", error);
+        setLastFirebaseError(error.message);
+      }
+    };
+    checkRedirect();
+
     console.log("[Auth] Setting up listener...");
     const unsubAuth = onAuthStateChanged(auth, (currentUser) => {
       console.log("[Auth] State changed:", currentUser ? `User: ${currentUser.email} (${currentUser.uid})` : "No user");
@@ -607,17 +619,14 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
   const handleLogin = async () => {
     setIsLoggingIn(true);
     try {
-      await signInWithPopup(auth, googleProvider);
+      await signInWithRedirect(auth, googleProvider);
     } catch (error: any) {
       console.error("Login error:", error);
-      if (error.code === 'auth/popup-blocked') {
-        alert(lang === 'ar' ? 'تم حظر المنبثقة! يرجى السماح بالمنبثقات لهذا الموقع.' : 'Popup blocked! Please allow popups for this site.');
-      } else if (error.code === 'auth/unauthorized-domain') {
+      if (error.code === 'auth/unauthorized-domain') {
         alert(lang === 'ar' ? 'هذا النطاق غير مصرح به في Firebase Console.' : 'This domain is not authorized in Firebase Console.');
       } else {
         alert(lang === 'ar' ? 'فشل تسجيل الدخول: ' + error.message : 'Login failed: ' + error.message);
       }
-    } finally {
       setIsLoggingIn(false);
     }
   };

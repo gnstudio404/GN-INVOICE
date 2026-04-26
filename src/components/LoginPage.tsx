@@ -16,7 +16,8 @@ import {
 import { useNavigate, Link } from 'react-router-dom';
 import { auth, googleProvider } from '../lib/firebase';
 import { 
-  signInWithPopup, 
+  signInWithRedirect,
+  getRedirectResult,
   onAuthStateChanged, 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword 
@@ -61,7 +62,9 @@ const LoginPage: React.FC<LoginPageProps> = ({ lang, isDarkMode }) => {
       error: "Error",
       success: "Success",
       loginAction: "Logging in...",
-      signupAction: "Creating account..."
+      signupAction: "Creating account...",
+      redirecting: "Redirecting to Google...",
+      completingLogin: "Completing secure sign-in..."
     },
     ar: {
       title: "مرحباً بك مجدداً",
@@ -86,11 +89,31 @@ const LoginPage: React.FC<LoginPageProps> = ({ lang, isDarkMode }) => {
       error: "خطأ",
       success: "نجاح",
       loginAction: "جاري الدخول...",
-      signupAction: "جاري إنشاء الحساب..."
+      signupAction: "جاري إنشاء الحساب...",
+      redirecting: "جاري التحويل إلى جوجل...",
+      completingLogin: "جاري إتمام تسجيل الدخول الآمن..."
     }
   }[lang];
 
   useEffect(() => {
+    // 1. Handle redirect result
+    const checkRedirect = async () => {
+      try {
+        const result = await getRedirectResult(auth);
+        if (result) {
+          // Successfully signed in via redirect
+          navigate('/invoice', { replace: true });
+          return;
+        }
+      } catch (error: any) {
+        console.error("Redirect auth error:", error);
+        setErrorMessage(error.message);
+      }
+    };
+    
+    checkRedirect();
+
+    // 2. Handle standard auth state
     const unsub = onAuthStateChanged(auth, (user) => {
       if (user) {
         navigate('/invoice', { replace: true });
@@ -98,10 +121,11 @@ const LoginPage: React.FC<LoginPageProps> = ({ lang, isDarkMode }) => {
         setAuthLoading(false);
       }
     });
+
     return () => unsub();
   }, [navigate]);
 
-  if (authLoading) {
+  if (authLoading || isLoggingIn) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white dark:bg-[#060B16]">
         <div className="flex flex-col items-center gap-6">
@@ -112,7 +136,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ lang, isDarkMode }) => {
             </div>
           </div>
           <p className="font-black text-blue-600 tracking-widest text-sm animate-pulse uppercase">
-            AUTHENTICATING...
+            {isLoggingIn ? t.redirecting : t.completingLogin}
           </p>
         </div>
       </div>
@@ -123,18 +147,12 @@ const LoginPage: React.FC<LoginPageProps> = ({ lang, isDarkMode }) => {
     setIsLoggingIn(true);
     setErrorMessage(null);
     try {
-      await signInWithPopup(auth, googleProvider);
+      await signInWithRedirect(auth, googleProvider);
+      // The page will redirect away here
     } catch (error: any) {
       console.error("Login error:", error);
-      if (error.code === 'auth/popup-blocked') {
-        setErrorMessage(lang === 'en' 
-          ? "Popup blocked! Please allow popups for this site in your browser settings to log in with Google." 
-          : "تم حظر النافذة المنبثقة! يرجى السماح بالنوافذ المنبثقة لهذا الموقع في إعدادات متصفحك لإتمام تسجيل الدخول.");
-      } else if (error.code !== 'auth/popup-closed-by-user') {
-        setErrorMessage(error.message);
-      }
-    } finally {
       setIsLoggingIn(false);
+      setErrorMessage(error.message);
     }
   };
 
