@@ -104,10 +104,11 @@ const LoginPage: React.FC<LoginPageProps> = ({ lang, isDarkMode }) => {
         const result = await getRedirectResult(auth);
         if (result) {
           console.log("[LoginPage] Successful redirect login for:", result.user.email);
+          // IMPORTANT: Check if we are already transitioning
           navigate('/invoice', { replace: true });
           return;
         }
-        console.log("[LoginPage] No redirect result found.");
+        console.log("[LoginPage] No redirect result found at LoginPage.");
       } catch (error: any) {
         console.error("[LoginPage] Redirect auth error:", error);
         setErrorMessage(error.message);
@@ -153,22 +154,29 @@ const LoginPage: React.FC<LoginPageProps> = ({ lang, isDarkMode }) => {
   const handleGoogleLogin = async () => {
     setIsLoggingIn(true);
     setErrorMessage(null);
+    console.log("[LoginPage] Starting Google Login...");
     try {
       // Try popup first as requested by user
+      console.log("[LoginPage] Attempting popup auth...");
       await signInWithPopup(auth, googleProvider);
+      console.log("[LoginPage] Popup auth success.");
     } catch (error: any) {
-      console.error("Login error:", error);
+      console.error("[LoginPage] Popup Login error:", error);
       
-      // If popup is blocked, fallback to redirect
-      if (error.code === 'auth/popup-blocked') {
+      // Fallback to redirect if popup is blocked OR closed by user
+      const isBlocked = error.code === 'auth/popup-blocked';
+      const isClosed = error.code === 'auth/popup-closed-by-user';
+      
+      if (isBlocked || isClosed) {
+        console.log(`[LoginPage] Popup was ${isBlocked ? 'blocked' : 'closed'}. Falling back to redirect...`);
         try {
           await signInWithRedirect(auth, googleProvider);
+          // Browser will redirect to Google
         } catch (redirectErr: any) {
+          console.error("[LoginPage] Redirect login fallback error:", redirectErr);
           setIsLoggingIn(false);
           setErrorMessage(redirectErr.message);
         }
-      } else if (error.code === 'auth/popup-closed-by-user') {
-        setIsLoggingIn(false);
       } else {
         setIsLoggingIn(false);
         setErrorMessage(error.message);
