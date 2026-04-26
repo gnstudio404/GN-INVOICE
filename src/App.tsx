@@ -58,6 +58,8 @@ import {
   History,
   Save,
   X,
+  Send,
+  MessageSquare,
   LayoutDashboard,
   Users,
   Wallet,
@@ -154,6 +156,8 @@ const translations = {
     reset: "Reset Form",
     resetConfirm: "Are you sure you want to reset the form?",
     support: "Support",
+  whatsapp: "WhatsApp",
+    telegram: "Telegram",
     allRightsReserved: "All rights reserved. Professional invoicing for the modern digital era.",
     currencySymbol: "$",
     login: "Login with Google",
@@ -253,6 +257,8 @@ const translations = {
     reset: "إعادة تعيين",
     resetConfirm: "هل أنت متأكد أنك تريد إعادة تعيين النموذج؟",
     support: "الدعم",
+  whatsapp: "واتساب",
+    telegram: "تلجرام",
     allRightsReserved: "جميع الحقوق محفوظة. فوترة احترافية للعصر الرقمي الحديث.",
     currencySymbol: "$",
     login: "تسجيل الدخول باستخدام جوجل",
@@ -315,6 +321,8 @@ interface InvoiceData {
   customActivity: string;
   logo: string | null;
   phoneNumber: string;
+  telegram?: string;
+  whatsapp?: string;
   items: InvoiceItem[];
   totalAmount: number;
   paidAmount?: number;
@@ -352,6 +360,8 @@ interface BusinessInfo {
   id?: string;
   name: string;
   phone: string;
+  telegram?: string;
+  whatsapp?: string;
   logo: string | null;
   activityIndex?: number;
   customActivity?: string;
@@ -727,6 +737,8 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
           ...prev,
           serviceProvider: prev.serviceProvider || data.name || '',
           phoneNumber: prev.phoneNumber || data.phone || '',
+          telegram: prev.telegram || data.telegram || '',
+          whatsapp: prev.whatsapp || data.whatsapp || '',
           logo: prev.logo || data.logo || null,
           activityIndex: prev.activityIndex || data.activityIndex || 0,
           customActivity: prev.customActivity || data.customActivity || ''
@@ -2624,7 +2636,15 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
   );
 
   const ProfileView = () => {
-    const [localInfo, setLocalInfo] = useState<BusinessInfo>(businessInfo || { name: '', phone: '', logo: null, activityIndex: 0, customActivity: '' });
+    const [localInfo, setLocalInfo] = useState<BusinessInfo>(businessInfo || { 
+      name: '', 
+      phone: '01553251011', 
+      whatsapp: '01553251011',
+      telegram: '@GN_OA',
+      logo: null, 
+      activityIndex: 0, 
+      customActivity: '' 
+    });
     const [isSaving, setIsSaving] = useState(false);
     const profileFileRef = useRef<HTMLInputElement>(null);
 
@@ -2644,6 +2664,8 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
             ...prev,
             serviceProvider: localInfo.name || prev.serviceProvider,
             phoneNumber: localInfo.phone || prev.phoneNumber,
+            telegram: localInfo.telegram || prev.telegram,
+            whatsapp: localInfo.whatsapp || prev.whatsapp,
             logo: localInfo.logo || prev.logo,
             activityIndex: localInfo.activityIndex ?? prev.activityIndex,
             customActivity: localInfo.customActivity || prev.customActivity
@@ -2659,6 +2681,8 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
           ...prev,
           serviceProvider: localInfo.name || prev.serviceProvider,
           phoneNumber: localInfo.phone || prev.phoneNumber,
+          telegram: localInfo.telegram || prev.telegram,
+          whatsapp: localInfo.whatsapp || prev.whatsapp,
           logo: localInfo.logo || prev.logo,
           activityIndex: localInfo.activityIndex ?? prev.activityIndex,
           customActivity: localInfo.customActivity || prev.customActivity
@@ -2722,6 +2746,22 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                 value={localInfo.phone} 
                 onChange={(e) => setLocalInfo(prev => ({ ...prev, phone: e.target.value }))}
                 placeholder={t.phonePlaceholder}
+              />
+            </div>
+            <div className={lang === 'ar' ? 'order-3' : ''}>
+              <Label>{t.whatsapp}</Label>
+              <Input 
+                value={localInfo.whatsapp} 
+                onChange={(e) => setLocalInfo(prev => ({ ...prev, whatsapp: e.target.value }))}
+                placeholder="01..."
+              />
+            </div>
+            <div className={lang === 'ar' ? 'order-4' : ''}>
+              <Label>{t.telegram}</Label>
+              <Input 
+                value={localInfo.telegram} 
+                onChange={(e) => setLocalInfo(prev => ({ ...prev, telegram: e.target.value }))}
+                placeholder="@..."
               />
             </div>
             <div className="md:col-span-2 text-right">
@@ -3557,15 +3597,39 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                   </div>
 
                   {/* Contact Bottom */}
-                  {invoiceData.phoneNumber && (
-                    <div className="mt-24 flex flex-col items-center justify-center gap-3 border-t-2 border-[#F0F0F0] dark:border-white/5 pt-16">
-                      <div className="flex items-center gap-4">
-                        <span className="text-lg font-bold text-[#666666] dark:text-[#94A3B8]">
-                          {lang === 'ar' ? 'للتواصل:' : 'Contact:'}
-                        </span>
-                        <span className="text-3xl font-black text-[#1A1A1A] dark:text-[#E2E8F0] tracking-tighter">
-                          {invoiceData.phoneNumber}
-                        </span>
+                  {(invoiceData.phoneNumber || invoiceData.whatsapp || invoiceData.telegram) && (
+                    <div className="mt-24 flex flex-col items-center justify-center gap-6 border-t-2 border-[#F0F0F0] dark:border-white/5 pt-16">
+                      <div className="flex flex-wrap items-center justify-center gap-8">
+                        {invoiceData.phoneNumber && (
+                          <div className="flex items-center gap-4">
+                            <span className="text-sm font-bold text-[#666666] dark:text-[#94A3B8] uppercase tracking-widest">
+                               {lang === 'ar' ? 'الجوال:' : 'Phone:'}
+                            </span>
+                            <span className="text-2xl font-black text-[#1A1A1A] dark:text-[#E2E8F0] tracking-tighter">
+                               {invoiceData.phoneNumber}
+                            </span>
+                          </div>
+                        )}
+                        {invoiceData.whatsapp && (
+                          <div className="flex items-center gap-4">
+                            <span className="text-sm font-bold text-[#666666] dark:text-[#94A3B8] uppercase tracking-widest">
+                               {lang === 'ar' ? 'واتساب:' : 'WhatsApp:'}
+                            </span>
+                            <span className="text-2xl font-black text-[#1A1A1A] dark:text-[#E2E8F0] tracking-tighter">
+                               {invoiceData.whatsapp}
+                            </span>
+                          </div>
+                        )}
+                        {invoiceData.telegram && (
+                          <div className="flex items-center gap-4">
+                            <span className="text-sm font-bold text-[#666666] dark:text-[#94A3B8] uppercase tracking-widest">
+                               {lang === 'ar' ? 'تلجرام:' : 'Telegram:'}
+                            </span>
+                            <span className="text-2xl font-black text-[#1A1A1A] dark:text-[#E2E8F0] tracking-tighter">
+                               {invoiceData.telegram}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -3647,6 +3711,16 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
       {/* Footer */}
       <footer className="no-print border-t border-[#F0F0F0] dark:border-white/5 py-12">
         <div className="container mx-auto px-4 text-center md:px-8">
+          <div className="mb-6 flex flex-wrap justify-center gap-6 text-sm font-bold text-[#666666] dark:text-[#94A3B8]">
+            <a href="https://t.me/GN_OA" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 hover:text-blue-500 transition-colors">
+               <Send size={18} />
+               <span>GN_OA</span>
+            </a>
+            <a href="https://wa.me/201553251011" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 hover:text-emerald-500 transition-colors">
+               <MessageSquare size={18} />
+               <span>01553251011</span>
+            </a>
+          </div>
           <p className="text-sm text-[#999999] dark:text-[#94A3B8]">
             © 2026 {t.title}. {t.allRightsReserved}
           </p>
