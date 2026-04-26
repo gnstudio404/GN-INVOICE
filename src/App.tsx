@@ -32,6 +32,7 @@ import {
 import { 
   Plus, 
   Trash2, 
+  Edit,
   Download, 
   Printer, 
   Upload, 
@@ -430,6 +431,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
   const [saveNameInput, setSaveNameInput] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showAddContact, setShowAddContact] = useState(false);
+  const [editingContactId, setEditingContactId] = useState<string | null>(null);
   const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
   const [newContactData, setNewContactData] = useState({ name: '', phone: '', email: '', address: '' });
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -800,37 +802,82 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     }
   };
 
-  const handleAddContact = async (contactData: Omit<Contact, 'id' | 'userId' | 'totalBalance' | 'totalPaid' | 'createdAt'>) => {
+  const handleSaveContact = async (contactData: Omit<Contact, 'id' | 'userId' | 'totalBalance' | 'totalPaid' | 'createdAt'>) => {
     if (!user) {
-      const newContact: Contact = {
-        ...contactData,
-        id: generateId(),
-        totalBalance: 0,
-        totalPaid: 0,
-        createdAt: new Date().toISOString()
-      };
+      if (editingContactId) {
+        setContacts(prev => {
+          const updated = prev.map(c => c.id === editingContactId ? { ...c, ...contactData } : c);
+          localStorage.setItem('gn_contacts', JSON.stringify(updated));
+          return updated;
+        });
+        setEditingContactId(null);
+      } else {
+        const newContact: Contact = {
+          ...contactData,
+          id: generateId(),
+          totalBalance: 0,
+          totalPaid: 0,
+          createdAt: new Date().toISOString()
+        };
+        setContacts(prev => {
+          const updated = [newContact, ...prev];
+          localStorage.setItem('gn_contacts', JSON.stringify(updated));
+          return updated;
+        });
+      }
+      return;
+    }
+    
+    try {
+      if (editingContactId) {
+        console.log(`[Firestore] Updating contact: ${editingContactId}`);
+        const docRef = doc(db, "clients", editingContactId);
+        await updateDoc(docRef, {
+          ...contactData,
+          updatedAt: serverTimestamp()
+        });
+        setEditingContactId(null);
+      } else {
+        console.log(`[Firestore] Adding contact for UID: ${user.uid}`);
+        const newContact: Omit<Contact, 'id'> = {
+          ...contactData,
+          userId: user.uid,
+          totalBalance: 0,
+          totalPaid: 0,
+          createdAt: serverTimestamp()
+        };
+        const docRef = await addDoc(collection(db, "clients"), newContact);
+        console.log(`[Firestore] Contact added with ID: ${docRef.id}`);
+      }
+    } catch (err) {
+      console.error("Error saving contact:", err);
+      setLastFirebaseError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const [clientToDelete, setClientToDelete] = useState<string | null>(null);
+
+  const confirmDeleteClient = async () => {
+    if (!clientToDelete) return;
+    const id = clientToDelete;
+    setClientToDelete(null);
+
+    if (!user) {
       setContacts(prev => {
-        const updated = [newContact, ...prev];
+        const updated = prev.filter(c => c.id !== id);
         localStorage.setItem('gn_contacts', JSON.stringify(updated));
         return updated;
       });
       return;
     }
-    
+
     try {
-      console.log(`[Firestore] Adding contact for UID: ${user.uid}`);
-      const newContact: Omit<Contact, 'id'> = {
-        ...contactData,
-        userId: user.uid,
-        totalBalance: 0,
-        totalPaid: 0,
-        createdAt: serverTimestamp()
-      };
-      const docRef = await addDoc(collection(db, "clients"), newContact);
-      console.log(`[Firestore] Contact added with ID: ${docRef.id}`);
+      await deleteDoc(doc(db, "clients", id));
+      if (selectedContactId === id) setSelectedContactId(null);
     } catch (err) {
-      console.error("Error adding contact:", err);
+      console.error("Error deleting contact:", err);
       setLastFirebaseError(err instanceof Error ? err.message : String(err));
+      alert(lang === 'en' ? "Error deleting client" : "خطأ أثناء حذف العميل");
     }
   };
 
@@ -1332,7 +1379,35 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                    <h3 className="font-bold text-lg leading-none mb-1">{contact.name}</h3>
                    <p className="text-xs text-[#666666] dark:text-[#94A3B8]">{contact.phone}</p>
                  </div>
-                 <ChevronRight size={18} className="text-[#999999] opacity-0 group-hover:opacity-100 transition-all" />
+                 <div className="flex items-center gap-1">
+                   <button 
+                     onClick={(e) => {
+                       e.stopPropagation();
+                       setEditingContactId(contact.id || null);
+                       setNewContactData({
+                         name: contact.name,
+                         phone: contact.phone,
+                         email: contact.email || '',
+                         address: contact.address || ''
+                       });
+                       setShowAddContact(true);
+                     }}
+                     className="p-2 rounded-full hover:bg-blue-50 dark:hover:bg-blue-500/10 text-blue-600 transition-colors"
+                   >
+                     <Edit size={16} />
+                   </button>
+                   <button 
+                     type="button"
+                     onClick={(e) => {
+                       e.stopPropagation();
+                       setClientToDelete(contact.id || null);
+                     }}
+                     className="p-2 rounded-full hover:bg-red-50 dark:hover:bg-red-500/10 text-red-600 transition-colors relative z-10"
+                   >
+                     <Trash2 size={16} />
+                   </button>
+                   <ChevronRight size={18} className="text-[#999999] opacity-0 group-hover:opacity-100 transition-all" />
+                 </div>
                </div>
                <div className="pt-4 border-t border-[#1A1A1A]/5 dark:border-white/5 flex items-center justify-between">
                   <span className="text-xs font-bold text-[#666666] uppercase tracking-wider">{lang === 'en' ? 'Debt' : 'المديونية'}</span>
@@ -2434,6 +2509,31 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
           </div>
         )}
 
+        {clientToDelete && (
+          <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} onClick={() => setClientToDelete(null)} className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="relative w-full max-w-sm rounded-[32px] bg-white dark:bg-[#0F172A] p-8 shadow-2xl text-center">
+              <div className="w-16 h-16 bg-red-50 dark:bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                <Trash2 size={32} className="text-red-500" />
+              </div>
+              <h3 className="text-xl font-bold mb-2">{lang === 'en' ? 'Delete Client?' : 'حذف العميل؟'}</h3>
+              <p className="text-[#666666] dark:text-[#94A3B8] text-sm mb-8">
+                {lang === 'en' 
+                  ? 'This will permanently remove the client and all associated record links.' 
+                  : 'سيؤدي هذا إلى حذف العميل نهائياً وجميع روابط السجلات المرتبطة به.'}
+              </p>
+              <div className="flex gap-3">
+                <Button variant="outline" onClick={() => setClientToDelete(null)} className="flex-1 py-4">
+                  {lang === 'en' ? 'Cancel' : 'إلغاء'}
+                </Button>
+                <Button onClick={confirmDeleteClient} className="flex-1 py-4 bg-red-500 hover:bg-red-600 border-none text-white font-bold">
+                  {lang === 'en' ? 'Delete' : 'حذف'}
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
         {showDeleteConfirm && (
           <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowDeleteConfirm(false)} className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
@@ -2455,13 +2555,13 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
       <AnimatePresence>
         {showAddContact && (
           <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowAddContact(false)} className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => { setShowAddContact(false); setEditingContactId(null); setNewContactData({ name: '', phone: '', email: '', address: '' }); }} className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
             <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="relative w-full max-w-lg rounded-[32px] bg-white dark:bg-[#0F172A] p-8 shadow-2xl border border-blue-100 dark:border-blue-900/10">
                <div className="flex items-center justify-between mb-8">
-                 <h2 className="text-2xl font-black">{t.addClient}</h2>
-                 <Button variant="ghost" size="icon" onClick={() => setShowAddContact(false)} className="rounded-full">
+                 <h2 className="text-2xl font-black">{editingContactId ? (lang === 'en' ? 'Edit Client' : 'تعديل العميل') : t.addClient}</h2>
+                 <button onClick={() => { setShowAddContact(false); setEditingContactId(null); setNewContactData({ name: '', phone: '', email: '', address: '' }); }} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-white/5">
                    <X size={20} />
-                 </Button>
+                 </button>
                </div>
 
                <div className="space-y-6">
@@ -2506,13 +2606,13 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                  
                  <Button 
                    onClick={() => {
-                     handleAddContact(newContactData);
+                     handleSaveContact(newContactData);
                      setShowAddContact(false);
                      setNewContactData({ name: '', phone: '', email: '', address: '' });
                    }}
                    className="w-full py-6 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-black"
                  >
-                   {t.saveClient}
+                   {editingContactId ? (lang === 'en' ? 'Update Client' : 'تحديث العميل') : t.saveClient}
                  </Button>
                </div>
             </motion.div>
