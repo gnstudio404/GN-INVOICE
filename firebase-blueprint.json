@@ -89,6 +89,21 @@
         "price": { "type": "number" },
         "cost": { "type": "number", "description": "Purchase cost for profit calculation" }
       }
+    },
+    "businessInfo": {
+      "title": "Business Info",
+      "description": "User's business profile details",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "logo": { "type": "string" },
+        "activityIndex": { "type": "number" },
+        "customActivity": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId"]
     }
   },
   "firestore": {
@@ -111,6 +126,10 @@
     "products": {
       "schema": "product",
       "description": "Inventory and products"
+    },
+    "businessInfo": {
+      "schema": "businessInfo",
+      "description": "User business profiles"
     }
   }
 }

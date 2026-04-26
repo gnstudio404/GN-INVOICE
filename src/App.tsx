@@ -27,6 +27,7 @@ import {
   deleteDoc, 
   doc, 
   getDoc,
+  setDoc,
   orderBy, 
   updateDoc,
   serverTimestamp 
@@ -329,6 +330,15 @@ interface Payment {
   note?: string;
 }
 
+interface BusinessInfo {
+  id?: string;
+  name: string;
+  phone: string;
+  logo: string | null;
+  activityIndex?: number;
+  customActivity?: string;
+}
+
 interface Expense {
   id?: string;
   userId?: string;
@@ -422,7 +432,8 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
   const [payments, setPayments] = useState<Payment[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'invoices' | 'contacts' | 'payments' | 'expenses'>(() => (localStorage.getItem('gn_active_tab') as any) || 'dashboard');
+  const [businessInfo, setBusinessInfo] = useState<BusinessInfo | null>(null);
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'invoices' | 'contacts' | 'payments' | 'expenses' | 'profile'>(() => (localStorage.getItem('gn_active_tab') as any) || 'dashboard');
   const [showAddPayment, setShowAddPayment] = useState(false);
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [newPaymentData, setNewPaymentData] = useState<Omit<Payment, 'id' | 'userId' | 'date'>>({ contactId: '', amount: 0, method: 'cash' });
@@ -596,12 +607,31 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
       setProducts(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as Product[]);
     }, (error) => console.error("Products listener error:", error));
 
+    const businessQuery = query(collection(db, "businessInfo"), where("userId", "==", user.uid));
+    const unsubBusiness = onSnapshot(businessQuery, (snapshot) => {
+      if (!snapshot.empty) {
+        const data = snapshot.docs[0].data();
+        setBusinessInfo({ ...data, id: snapshot.docs[0].id } as BusinessInfo);
+        
+        // Auto-fill invoice if it's empty
+        setInvoiceData(prev => ({
+          ...prev,
+          serviceProvider: prev.serviceProvider || data.name || '',
+          phoneNumber: prev.phoneNumber || data.phone || '',
+          logo: prev.logo || data.logo || null,
+          activityIndex: prev.activityIndex || data.activityIndex || 0,
+          customActivity: prev.customActivity || data.customActivity || ''
+        }));
+      }
+    }, (error) => console.error("Business info listener error:", error));
+
     return () => {
       unsubFirestore();
       unsubContacts();
       unsubPayments();
       unsubExpenses();
       unsubProducts();
+      unsubBusiness();
     };
   }, [user, authLoading]);
 
@@ -609,14 +639,33 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
   useEffect(() => {
     if (!authLoading && !user) {
       localStorage.setItem('gn_builder_data', JSON.stringify(invoiceData));
+      if (businessInfo) {
+        localStorage.setItem('gn_business_info', JSON.stringify(businessInfo));
+      }
     }
-  }, [invoiceData, user, authLoading]);
+  }, [invoiceData, businessInfo, user, authLoading]);
 
   useEffect(() => {
     if (!authLoading && !user) {
       const savedBuilderData = localStorage.getItem('gn_builder_data');
       if (savedBuilderData) {
         try { setInvoiceData(JSON.parse(savedBuilderData)); } catch(e) {}
+      }
+      
+      const savedBusinessInfo = localStorage.getItem('gn_business_info');
+      if (savedBusinessInfo) {
+        try {
+          const info = JSON.parse(savedBusinessInfo);
+          setBusinessInfo(info);
+          setInvoiceData(prev => ({
+            ...prev,
+            serviceProvider: prev.serviceProvider || info.name || '',
+            phoneNumber: prev.phoneNumber || info.phone || '',
+            logo: prev.logo || info.logo || null,
+            activityIndex: prev.activityIndex || info.activityIndex || 0,
+            customActivity: prev.customActivity || info.customActivity || ''
+          }));
+        } catch(e) {}
       }
     }
   }, [user, authLoading]);
@@ -1328,6 +1377,19 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     setShowHistory(false);
   };
 
+  const handleDownloadHistoryInvoice = async (invoice: InvoiceData) => {
+    setInvoiceData(invoice);
+    setActiveTab('invoices');
+    setIsPreviewMode(true);
+    setShowHistory(false);
+    setSelectedContactId(null);
+    
+    // Give time for the preview to render high-quality assets
+    setTimeout(async () => {
+      await handleDownloadPdf();
+    }, 800);
+  };
+
   const activityDisplay = invoiceData.activityIndex === t.activities.length - 1 
     ? invoiceData.customActivity 
     : t.activities[invoiceData.activityIndex];
@@ -1485,10 +1547,13 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                     </div>
                     <div className="flex items-center gap-6">
                       <div className="hidden group-hover:flex items-center gap-2">
-                        <button onClick={() => handleEditInvoice(invoice)} className="p-2 hover:bg-blue-100 dark:hover:bg-blue-500/20 text-blue-600 rounded-lg transition-colors">
+                        <button onClick={() => handleEditInvoice(invoice)} className="p-2 hover:bg-blue-100 dark:hover:bg-blue-500/20 text-blue-600 rounded-lg transition-colors" title={lang === 'en' ? 'Edit' : 'تعديل'}>
                           <Edit size={16} />
                         </button>
-                        <button onClick={() => confirmDelete(invoice.id!)} className="p-2 hover:bg-red-100 dark:hover:bg-red-500/20 text-red-600 rounded-lg transition-colors">
+                        <button onClick={() => handleDownloadHistoryInvoice(invoice)} className="p-2 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 text-emerald-600 rounded-lg transition-colors" title={lang === 'en' ? 'Download' : 'تنزيل'}>
+                          <Download size={16} />
+                        </button>
+                        <button onClick={() => confirmDelete(invoice.id!)} className="p-2 hover:bg-red-100 dark:hover:bg-red-500/20 text-red-600 rounded-lg transition-colors" title={lang === 'en' ? 'Delete' : 'حذف'}>
                           <Trash2 size={16} />
                         </button>
                       </div>
@@ -1847,6 +1912,139 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     </motion.div>
   );
 
+  const ProfileView = () => {
+    const [localInfo, setLocalInfo] = useState<BusinessInfo>(businessInfo || { name: '', phone: '', logo: null, activityIndex: 0, customActivity: '' });
+    const [isSaving, setIsSaving] = useState(false);
+    const profileFileRef = useRef<HTMLInputElement>(null);
+
+    const handleSave = async () => {
+      setIsSaving(true);
+      if (user) {
+        try {
+          // Using userId as doc ID for business info to keep it simple and unique per user
+          await setDoc(doc(db, "businessInfo", user.uid), {
+            ...localInfo,
+            userId: user.uid,
+            updatedAt: serverTimestamp()
+          });
+          
+          setBusinessInfo({ ...localInfo, id: user.uid });
+          setInvoiceData(prev => ({
+            ...prev,
+            serviceProvider: localInfo.name || prev.serviceProvider,
+            phoneNumber: localInfo.phone || prev.phoneNumber,
+            logo: localInfo.logo || prev.logo,
+            activityIndex: localInfo.activityIndex ?? prev.activityIndex,
+            customActivity: localInfo.customActivity || prev.customActivity
+          }));
+          alert(lang === 'ar' ? 'تم حفظ البيانات بنجاح' : 'Data saved successfully');
+        } catch (err) {
+          console.error("Save profile error:", err);
+        }
+      } else {
+        localStorage.setItem('gn_business_info', JSON.stringify(localInfo));
+        setBusinessInfo(localInfo);
+        setInvoiceData(prev => ({
+          ...prev,
+          serviceProvider: localInfo.name || prev.serviceProvider,
+          phoneNumber: localInfo.phone || prev.phoneNumber,
+          logo: localInfo.logo || prev.logo,
+          activityIndex: localInfo.activityIndex ?? prev.activityIndex,
+          customActivity: localInfo.customActivity || prev.customActivity
+        }));
+        alert(lang === 'ar' ? 'تم الحفظ محلياً' : 'Saved locally');
+      }
+      setIsSaving(false);
+    };
+
+    const handleProfileLogo = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) {
+        if (file.size > 2 * 1024 * 1024) {
+          alert(lang === 'ar' ? 'حجم الملف كبير جداً (الأقصى ٢ ميجابايت)' : 'File too large (max 2MB)');
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          setLocalInfo(prev => ({ ...prev, logo: event.target?.result as string }));
+        };
+        reader.readAsDataURL(file);
+      }
+    };
+
+    return (
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-2xl mx-auto space-y-8 pb-20">
+        <div className="text-center mb-10">
+          <h2 className="text-3xl font-black mb-2">{lang === 'en' ? 'Business Profile' : 'بيانات العمل'}</h2>
+          <p className="text-[#666666] dark:text-[#94A3B8]">{lang === 'en' ? 'These details will appear on your invoices automatically' : 'هذه التفاصيل ستظهر في فواتيرك تلقائياً'}</p>
+        </div>
+
+        <div className="bg-white dark:bg-white/5 border-2 border-[#1A1A1A]/5 dark:border-white/10 p-8 rounded-[40px] shadow-sm space-y-8">
+          <div className="flex flex-col items-center gap-4">
+             <Label>{t.businessLogo}</Label>
+             <div 
+               onClick={() => profileFileRef.current?.click()}
+               className="w-32 h-32 rounded-3xl border-2 border-dashed border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 flex items-center justify-center cursor-pointer overflow-hidden group hover:border-blue-500 transition-all"
+             >
+               {localInfo.logo ? (
+                 <img src={localInfo.logo} alt="Logo" className="w-full h-full object-contain p-2" />
+               ) : (
+                 <ImageIcon className="text-slate-400 group-hover:scale-110 transition-transform" size={40} />
+               )}
+               <input type="file" ref={profileFileRef} className="hidden" accept="image/*" onChange={handleProfileLogo} />
+             </div>
+             <p className="text-[10px] text-slate-400 font-bold uppercase">{t.logoDesc}</p>
+          </div>
+
+          <div className="grid gap-6 md:grid-cols-2 text-right">
+            <div className={lang === 'ar' ? 'order-1' : ''}>
+              <Label>{t.serviceProviderLabel}</Label>
+              <Input 
+                value={localInfo.name} 
+                onChange={(e) => setLocalInfo(prev => ({ ...prev, name: e.target.value }))}
+                placeholder={t.serviceProviderPlaceholder}
+              />
+            </div>
+            <div className={lang === 'ar' ? 'order-2' : ''}>
+              <Label>{t.contactPhone}</Label>
+              <Input 
+                value={localInfo.phone} 
+                onChange={(e) => setLocalInfo(prev => ({ ...prev, phone: e.target.value }))}
+                placeholder={t.phonePlaceholder}
+              />
+            </div>
+            <div className="md:col-span-2 text-right">
+              <Label>{t.businessActivity}</Label>
+              <select
+                value={localInfo.activityIndex}
+                onChange={(e) => setLocalInfo(prev => ({ ...prev, activityIndex: parseInt(e.target.value) }))}
+                className="flex h-11 w-full rounded-lg border border-[#E5E5E5] bg-white dark:bg-[#121212] dark:border-[#333333] dark:text-white px-3 py-2 text-sm focus:outline-none"
+              >
+                {t.activities.map((activity, idx) => (
+                  <option key={activity} value={idx}>{activity}</option>
+                ))}
+              </select>
+            </div>
+            {localInfo.activityIndex === t.activities.length - 1 && (
+              <div className="md:col-span-2">
+                <Label>{t.customActivity}</Label>
+                <Input 
+                  value={localInfo.customActivity} 
+                  onChange={(e) => setLocalInfo(prev => ({ ...prev, customActivity: e.target.value }))}
+                  placeholder={t.customActivityPlaceholder}
+                />
+              </div>
+            )}
+          </div>
+
+          <Button onClick={handleSave} disabled={isSaving} className="w-full py-6 text-lg bg-blue-600 hover:bg-blue-700 text-white font-black rounded-2xl shadow-xl shadow-blue-600/20">
+            {isSaving ? (lang === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (lang === 'ar' ? 'حفظ البيانات' : 'Save Profile')}
+          </Button>
+        </div>
+      </motion.div>
+    );
+  };
+
   const isAr = lang === 'ar';
 
   if (authLoading) {
@@ -1942,6 +2140,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
               setActiveTab('invoices');
               setIsPreviewMode(false);
             }}>{t.invoice}</TabButton>
+            <TabButton icon={<Settings size={18} />} active={activeTab === 'profile'} onClick={() => { setActiveTab('profile'); setIsPreviewMode(false); }}>{lang === 'en' ? 'My Data' : 'بياناتي'}</TabButton>
           </nav>
           
           <div className="flex items-center gap-2 sm:gap-4">
@@ -2535,6 +2734,12 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
           )
           ) : activeTab === 'contacts' ? (
             <ContactsView />
+          ) : activeTab === 'payments' ? (
+            <PaymentsView />
+          ) : activeTab === 'expenses' ? (
+            <ExpensesView />
+          ) : activeTab === 'profile' ? (
+            <ProfileView />
           ) : (
             <DashboardView />
           )}
@@ -2642,6 +2847,9 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                         <div className="flex items-center gap-2">
                           <Button variant="outline" size="sm" onClick={() => handleLoadInvoice(inv)}>
                             {t.edit}
+                          </Button>
+                          <Button variant="outline" size="icon" onClick={() => handleDownloadHistoryInvoice(inv)} className="h-9 w-9 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 border-emerald-100 dark:border-emerald-500/20">
+                            <Download size={18} />
                           </Button>
                           <Button variant="ghost" size="icon" onClick={() => confirmDelete(inv.id!)} className="h-10 w-10 text-red-400 hover:text-red-600">
                             <Trash2 size={20} />

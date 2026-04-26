@@ -54,6 +54,12 @@ service cloud.firestore {
              data.price is number;
     }
 
+    function isValidBusinessInfo(data) {
+      return data.userId == request.auth.uid &&
+             (!('name' in data) || data.name is string) &&
+             (!('phone' in data) || data.phone is string);
+    }
+
     match /invoices/{invoiceId} {
       allow get: if isOwner(resource.data.userId);
       allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
@@ -92,6 +98,15 @@ service cloud.firestore {
       allow create: if isSignedIn() && isValidProduct(incoming());
       allow update: if isOwner(resource.data.userId) && isValidProduct(incoming());
       allow delete: if isOwner(resource.data.userId);
+    }
+
+    match /businessInfo/{userId} {
+      allow get: if isOwner(userId);
+      // Even though it's set by userId, it's a collection, so list still applies for queries if used
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isOwner(userId) && isValidBusinessInfo(incoming());
+      allow update: if isOwner(userId) && isValidBusinessInfo(incoming());
+      allow delete: if isOwner(userId);
     }
   }
 }
