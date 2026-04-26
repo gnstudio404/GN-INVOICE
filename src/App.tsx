@@ -178,6 +178,8 @@ const translations = {
     recentInvoices: "Recent Invoices",
     businessOverview: "Business Overview",
     saveClient: "Save Client",
+    remainingAmount: "Remaining Amount",
+    paidAmount: "Paid Amount",
     activities: [
       "Software Development",
       "Graphic Design",
@@ -274,6 +276,8 @@ const translations = {
     recentInvoices: "آخر الفواتير",
     businessOverview: "نظرة عامة على العمل",
     saveClient: "حفظ العميل",
+    remainingAmount: "المبلغ المتبقي",
+    paidAmount: "المبلغ المدفوع",
     activities: [
       "تطوير البرمجيات",
       "التصميم الجرافيكي",
@@ -311,6 +315,7 @@ interface InvoiceData {
   phoneNumber: string;
   items: InvoiceItem[];
   totalAmount: number;
+  paidAmount?: number;
   status: 'paid' | 'pending' | 'overdue' | 'partially-paid';
   savedAt?: string;
   updatedAt?: any;
@@ -951,11 +956,15 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
           const updated = prev.map(c => {
             if (c.id === invoiceToSave.contactId) {
               const isPaid = invoiceToSave.status === 'paid';
+              const isPartial = invoiceToSave.status === 'partially-paid';
+              const paidAmount = isPaid ? total : (isPartial ? (invoiceToSave.paidAmount || 0) : 0);
+              const remainingAmount = total - paidAmount;
+              
               return { 
                 ...c, 
                 totalInvoices: (c.totalInvoices || 0) + total,
-                totalPaid: isPaid ? (c.totalPaid || 0) + total : (c.totalPaid || 0),
-                totalBalance: isPaid ? (c.totalBalance || 0) : (c.totalBalance || 0) + total
+                totalPaid: (c.totalPaid || 0) + paidAmount,
+                totalBalance: (c.totalBalance || 0) + remainingAmount
               };
             }
             return c;
@@ -964,7 +973,11 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
           return updated;
         });
 
-        if (invoiceToSave.status === 'paid') {
+        const isPaid = invoiceToSave.status === 'paid';
+        const isPartial = invoiceToSave.status === 'partially-paid';
+        const paidAmount = isPaid ? total : (isPartial ? (invoiceToSave.paidAmount || 0) : 0);
+
+        if (paidAmount > 0) {
           // Check if payment already exists for this invoice locally
           const guestPayments = JSON.parse(localStorage.getItem('gn_payments') || '[]');
           const alreadyPaid = guestPayments.some((p: any) => p.invoiceId === currentId);
@@ -974,10 +987,10 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
               id: generateId(),
               contactId: invoiceToSave.contactId,
               invoiceId: currentId,
-              amount: total,
+              amount: paidAmount,
               method: 'cash',
               date: new Date().toISOString(),
-              note: `Automated payment for ${invoiceToSave.serialNumber}`
+              note: `Automated payment for ${invoiceToSave.serialNumber}${isPartial ? ' (Partial)' : ''}`
             };
             setPayments(prev => {
               const updated = [newPayment, ...prev];
@@ -1056,21 +1069,25 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
               totalInvoices: (currentData.totalInvoices || 0) + totalAmount
             };
             
-            if (invoiceToSave.status === 'paid') {
-              updates.totalPaid = (currentData.totalPaid || 0) + totalAmount;
-              
+            const isPaid = invoiceToSave.status === 'paid';
+            const isPartial = invoiceToSave.status === 'partially-paid';
+            const paidAmount = isPaid ? totalAmount : (isPartial ? (invoiceToSave.paidAmount || 0) : 0);
+            const remainingAmount = totalAmount - paidAmount;
+
+            updates.totalPaid = (currentData.totalPaid || 0) + paidAmount;
+            updates.totalBalance = (currentData.totalBalance || 0) + remainingAmount;
+            
+            if (paidAmount > 0) {
               // Create automated payment record
               await addDoc(collection(db, "payments"), {
                 userId: user.uid,
                 contactId: invoiceToSave.contactId,
                 invoiceId: docRef.id,
-                amount: totalAmount,
+                amount: paidAmount,
                 method: 'cash',
                 date: serverTimestamp(),
-                note: `Automated payment for ${invoiceToSave.serialNumber}`
+                note: `Automated payment for ${invoiceToSave.serialNumber}${isPartial ? ' (Partial)' : ''}`
               });
-            } else {
-              updates.totalBalance = (currentData.totalBalance || 0) + totalAmount;
             }
             
             await updateDoc(contactRef, updates);
@@ -1094,7 +1111,9 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
   const handleMarkAsPaid = async (invoice: InvoiceData) => {
     if (invoice.status === 'paid') return;
     
-    const updatedInvoice: InvoiceData = { ...invoice, status: 'paid', updatedAt: new Date().toISOString() as any };
+    const paidAmount = invoice.paidAmount || 0;
+    const remainingToPay = invoice.totalAmount - paidAmount;
+    const updatedInvoice: InvoiceData = { ...invoice, status: 'paid', paidAmount: invoice.totalAmount, updatedAt: new Date().toISOString() as any };
 
     if (!user) {
       setSavedInvoices(prev => {
@@ -1109,8 +1128,8 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
             if (c.id === invoice.contactId) {
               return {
                 ...c,
-                totalPaid: (c.totalPaid || 0) + invoice.totalAmount,
-                totalBalance: Math.max(0, (c.totalBalance || 0) - invoice.totalAmount)
+                totalPaid: (c.totalPaid || 0) + remainingToPay,
+                totalBalance: Math.max(0, (c.totalBalance || 0) - remainingToPay)
               };
             }
             return c;
@@ -1124,10 +1143,10 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
           id: generateId(),
           contactId: invoice.contactId,
           invoiceId: invoice.id,
-          amount: invoice.totalAmount,
+          amount: remainingToPay,
           method: 'cash',
           date: new Date().toISOString(),
-          note: `Automated payment for ${invoice.serialNumber}`
+          note: `Automated payment for ${invoice.serialNumber} (Completion)`
         };
         setPayments(prev => {
           const updated = [newPayment, ...prev];
@@ -1141,7 +1160,11 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
 
     try {
       const invoiceRef = doc(db, "invoices", invoice.id!);
-      await updateDoc(invoiceRef, { status: 'paid', updatedAt: serverTimestamp() });
+      await updateDoc(invoiceRef, { 
+        status: 'paid', 
+        paidAmount: invoice.totalAmount,
+        updatedAt: serverTimestamp() 
+      });
       
       if (invoice.contactId) {
         // Add payment record
@@ -1149,10 +1172,10 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
           userId: user.uid,
           contactId: invoice.contactId,
           invoiceId: invoice.id,
-          amount: invoice.totalAmount,
+          amount: remainingToPay,
           method: 'cash',
           date: serverTimestamp(),
-          note: `Automated payment for ${invoice.serialNumber}`
+          note: `Automated payment for ${invoice.serialNumber} (Completion)`
         });
 
         // Update contact stats
@@ -1161,8 +1184,8 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
         if (contactSnap.exists()) {
           const currentData = contactSnap.data();
           await updateDoc(contactRef, {
-            totalPaid: (currentData.totalPaid || 0) + invoice.totalAmount,
-            totalBalance: Math.max(0, (currentData.totalBalance || 0) - invoice.totalAmount),
+            totalPaid: (currentData.totalPaid || 0) + remainingToPay,
+            totalBalance: Math.max(0, (currentData.totalBalance || 0) - remainingToPay),
             updatedAt: serverTimestamp()
           });
         }
@@ -3036,6 +3059,47 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                             </button>
                           ))}
                         </div>
+
+                        {invoiceData.status === 'partially-paid' && (
+                          <motion.div 
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            className="mt-6 p-6 rounded-[2rem] bg-blue-50/50 dark:bg-blue-500/5 border border-blue-100 dark:border-blue-500/20 overflow-hidden"
+                          >
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                              <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-2xl bg-blue-500 text-white flex items-center justify-center shadow-lg shadow-blue-500/20">
+                                  <Wallet size={24} />
+                                </div>
+                                <div>
+                                  <Label className="text-blue-900 dark:text-blue-100 mb-0.5 text-lg font-black">{t.remainingAmount}</Label>
+                                  <p className="text-[10px] text-blue-600/60 dark:text-blue-400/60 font-bold uppercase tracking-[0.1em]">
+                                    {lang === 'en' ? 'THIS AMOUNT WILL BE ADDED TO CLIENT DEBT' : 'هذا المبلغ سيتم إضافته إلى مديونية العميل'}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="relative w-full md:w-64">
+                                <span className={cn("absolute top-1/2 -translate-y-1/2 text-blue-400 font-black text-lg", lang === 'ar' ? 'right-4' : 'left-4')}>
+                                  {t.currencySymbol}
+                                </span>
+                                <input 
+                                  type="number"
+                                  value={invoiceData.totalAmount - (invoiceData.paidAmount ?? invoiceData.totalAmount)}
+                                  onChange={(e) => {
+                                    const remaining = Math.max(0, Number(e.target.value) || 0);
+                                    const paid = Math.max(0, total - remaining);
+                                    setInvoiceData(prev => ({ ...prev, paidAmount: paid }));
+                                  }}
+                                  className={cn(
+                                    "w-full py-4 rounded-2xl bg-white dark:bg-[#0F172A] border-2 border-blue-200 dark:border-blue-500/30 text-blue-700 dark:text-blue-400 font-black text-2xl focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all",
+                                    lang === 'ar' ? 'pr-12 pl-4 text-left' : 'pl-12 pr-4'
+                                  )}
+                                  placeholder="0"
+                                />
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
                       </div>
                     </div>
                   </section>
@@ -3325,10 +3389,23 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                         <span className="font-medium text-[#1A1A1A] dark:text-[#E2E8F0]">{t.currencySymbol}{total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                       </div>
                       <div className="h-px bg-[#F0F0F0] dark:bg-white/5" />
-                      <div className="flex justify-between pt-2">
+                       <div className="flex justify-between pt-2">
                         <span className="text-lg font-bold text-[#1A1A1A] dark:text-[#E2E8F0]">{t.totalAmount}</span>
                         <span className="text-2xl font-black text-[#1A1A1A] dark:text-[#E2E8F0]">{t.currencySymbol}{total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                       </div>
+                      
+                      {invoiceData.status === 'partially-paid' && (
+                        <div className="space-y-2 mt-4 pt-4 border-t border-dashed border-slate-200 dark:border-white/10 text-right">
+                          <div className="flex justify-between text-sm text-[#666666] dark:text-[#94A3B8]">
+                            <span>{t.paidAmount}</span>
+                            <span className="font-bold text-emerald-600 dark:text-emerald-400">{t.currencySymbol}{(invoiceData.paidAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                          </div>
+                          <div className="flex justify-between text-sm text-[#666666] dark:text-[#94A3B8]">
+                            <span>{t.remainingAmount}</span>
+                            <span className="font-bold text-red-600 dark:text-red-400">{t.currencySymbol}{(total - (invoiceData.paidAmount || 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
 
