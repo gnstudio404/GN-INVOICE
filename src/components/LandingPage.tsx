@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { auth } from '../lib/firebase';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, getRedirectResult } from 'firebase/auth';
 import { cn } from '../lib/utils';
 
 interface LandingPageProps {
@@ -28,6 +28,20 @@ const LandingPage: React.FC<LandingPageProps> = ({ lang, setLang, isDarkMode, se
   const [checkingAuth, setCheckingAuth] = useState(true);
 
   useEffect(() => {
+    // Check for redirect result first
+    const checkRedirect = async () => {
+      try {
+        const result = await getRedirectResult(auth);
+        if (result) {
+          navigate('/invoice', { replace: true });
+          return;
+        }
+      } catch (err) {
+        console.error("Landing redirect error:", err);
+      }
+    };
+    checkRedirect();
+
     const unsub = onAuthStateChanged(auth, (user) => {
       if (user) {
         navigate('/invoice', { replace: true });

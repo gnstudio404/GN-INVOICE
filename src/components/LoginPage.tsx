@@ -100,15 +100,18 @@ const LoginPage: React.FC<LoginPageProps> = ({ lang, isDarkMode }) => {
     // 1. Handle redirect result
     const checkRedirect = async () => {
       try {
+        console.log("[LoginPage] Checking redirect result...");
         const result = await getRedirectResult(auth);
         if (result) {
-          // Successfully signed in via redirect
+          console.log("[LoginPage] Successful redirect login for:", result.user.email);
           navigate('/invoice', { replace: true });
           return;
         }
+        console.log("[LoginPage] No redirect result found.");
       } catch (error: any) {
-        console.error("Redirect auth error:", error);
+        console.error("[LoginPage] Redirect auth error:", error);
         setErrorMessage(error.message);
+        setAuthLoading(false);
       }
     };
     
@@ -116,9 +119,12 @@ const LoginPage: React.FC<LoginPageProps> = ({ lang, isDarkMode }) => {
 
     // 2. Handle standard auth state
     const unsub = onAuthStateChanged(auth, (user) => {
+      console.log("[LoginPage] Auth state change:", user ? "Logged In" : "Logged Out");
       if (user) {
         navigate('/invoice', { replace: true });
       } else {
+        // Only stop loading if we haven't found a user
+        // We wait a bit to ensure redirect result had a chance if it's there
         setAuthLoading(false);
       }
     });
