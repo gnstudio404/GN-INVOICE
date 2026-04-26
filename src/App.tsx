@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
 import LandingPage from './components/LandingPage';
 import LoginPage from './components/LoginPage';
@@ -301,7 +301,7 @@ interface InvoiceData {
   phoneNumber: string;
   items: InvoiceItem[];
   totalAmount: number;
-  status: 'paid' | 'pending' | 'overdue';
+  status: 'paid' | 'pending' | 'overdue' | 'partially-paid';
   savedAt?: string;
 }
 
@@ -434,6 +434,28 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
   const [products, setProducts] = useState<Product[]>([]);
   const [businessInfo, setBusinessInfo] = useState<BusinessInfo | null>(null);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'invoices' | 'contacts' | 'payments' | 'expenses' | 'profile'>(() => (localStorage.getItem('gn_active_tab') as any) || 'dashboard');
+  
+  const contactsWithAggregatedDebt = useMemo(() => {
+    return contacts.map(contact => {
+      const contactInvoices = savedInvoices.filter(i => i.contactId === contact.id);
+      const contactPayments = payments.filter(p => p.contactId === contact.id);
+      
+      const totalInvoiced = contactInvoices.reduce((sum, i) => sum + (Number(i.totalAmount) || 0), 0);
+      const totalPaidViaPayments = contactPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+      const totalPaidInvoicesAmount = contactInvoices.filter(i => i.status === 'paid').reduce((sum, i) => sum + (Number(i.totalAmount) || 0), 0);
+      
+      const currentTotalPaid = Math.max(contact.totalPaid || 0, totalPaidViaPayments, totalPaidInvoicesAmount);
+      const currentTotalInvoiced = Math.max(contact.totalInvoices || 0, totalInvoiced);
+      const currentDebt = Math.max(0, currentTotalInvoiced - currentTotalPaid);
+      
+      return { 
+        ...contact, 
+        aggregatedDebt: currentDebt,
+        totalInvoiced: currentTotalInvoiced,
+        totalPaid: currentTotalPaid
+      };
+    });
+  }, [contacts, savedInvoices, payments]);
   const [showAddPayment, setShowAddPayment] = useState(false);
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [newPaymentData, setNewPaymentData] = useState<Omit<Payment, 'id' | 'userId' | 'date'>>({ contactId: '', amount: 0, method: 'cash' });
@@ -1394,7 +1416,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     ? invoiceData.customActivity 
     : t.activities[invoiceData.activityIndex];
 
-  const TabButton = ({ children, icon, active, onClick }: { children: React.ReactNode, icon: React.ReactNode, active: boolean, onClick: () => void }) => (
+  const TabButton = ({ children, icon, active, onClick }: { children?: React.ReactNode, icon: React.ReactNode, active: boolean, onClick: () => void }) => (
     <button 
       onClick={onClick}
       className={cn(
@@ -1465,16 +1487,13 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
   };
 
   const ContactsView = () => {
-    const selectedContact = contacts.find(c => c.id === selectedContactId);
+    const selectedContact = contactsWithAggregatedDebt.find(c => c.id === selectedContactId);
 
     if (selectedContactId && selectedContact) {
       const contactInvoices = savedInvoices.filter(i => i.contactId === selectedContactId);
-      const totalInvoiced = contactInvoices.reduce((sum, i) => sum + i.totalAmount, 0);
-      const totalPaidAggregation = contactInvoices.filter(i => i.status === 'paid').reduce((sum, i) => sum + i.totalAmount, 0);
-      const debtAggregation = contactInvoices.filter(i => i.status !== 'paid').reduce((sum, i) => sum + i.totalAmount, 0);
-      
-      const totalPaid = (selectedContact.totalPaid || 0) > totalPaidAggregation ? selectedContact.totalPaid : totalPaidAggregation;
-      const debt = (selectedContact.totalBalance || 0) > debtAggregation ? selectedContact.totalBalance : debtAggregation;
+      const totalInvoiced = selectedContact.totalInvoiced || 0;
+      const totalPaid = selectedContact.totalPaid || 0;
+      const debt = selectedContact.aggregatedDebt || 0;
 
       return (
         <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="space-y-8">
@@ -1559,8 +1578,13 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                       </div>
                       <div className="text-right">
                         <p className="font-black text-lg">{t.currencySymbol}{invoice.totalAmount.toLocaleString()}</p>
-                        <p className={cn("text-[10px] font-black uppercase", invoice.status === 'paid' ? "text-emerald-500" : "text-amber-500")}>
-                          {invoice.status === 'paid' ? (lang === 'en' ? 'Paid' : 'مدفوعة') : (lang === 'en' ? 'Pending' : 'قيد الانتظار')}
+                        <p className={cn("text-[10px] font-black uppercase", 
+                          invoice.status === 'paid' ? "text-emerald-500" : 
+                          invoice.status === 'partially-paid' ? "text-blue-500" :
+                          "text-amber-500")}>
+                          {invoice.status === 'paid' ? (lang === 'en' ? 'Paid' : 'مدفوعة') : 
+                           invoice.status === 'partially-paid' ? (lang === 'en' ? 'Partial' : 'باقي') :
+                           (lang === 'en' ? 'Pending' : 'قيد الانتظار')}
                         </p>
                       </div>
                     </div>
@@ -1595,7 +1619,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
          </div>
 
          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-           {contacts.map(contact => (
+           {contactsWithAggregatedDebt.map(contact => (
              <div 
                key={contact.id} 
                onClick={() => setSelectedContactId(contact.id || null)}
@@ -1641,13 +1665,13 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                </div>
                <div className="pt-4 border-t border-[#1A1A1A]/5 dark:border-white/5 flex items-center justify-between">
                   <span className="text-xs font-bold text-[#666666] uppercase tracking-wider">{lang === 'en' ? 'Debt' : 'المديونية'}</span>
-                  <span className={cn("font-black text-lg", contact.totalBalance > 0 ? "text-red-500" : "text-emerald-500")}>
-                    {t.currencySymbol}{(contact.totalBalance || 0).toLocaleString()}
+                  <span className={cn("font-black text-lg", (contact.aggregatedDebt || 0) > 0 ? "text-red-500" : "text-emerald-500")}>
+                    {t.currencySymbol}{(contact.aggregatedDebt || 0).toLocaleString()}
                   </span>
                </div>
              </div>
            ))}
-           {contacts.length === 0 && (
+           {contactsWithAggregatedDebt.length === 0 && (
              <div className="md:col-span-2 lg:col-span-3 py-20 text-center">
                <div className="w-20 h-20 bg-slate-100 dark:bg-white/5 rounded-full flex items-center justify-center mx-auto mb-6">
                  <Users size={32} className="text-[#999999]" />
@@ -1716,8 +1740,8 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
            
            <div className="bg-white dark:bg-white/5 border-2 border-[#1A1A1A]/5 dark:border-white/10 p-6 rounded-[32px] flex flex-col justify-between">
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#666666] dark:text-[#94A3B8]">{t.totalReceivable}</p>
-              <h3 className="text-3xl font-black text-red-500">{t.currencySymbol}{contacts.reduce((sum, c) => sum + (c.totalBalance || 0), 0).toLocaleString()}</h3>
-              <p className="text-[10px] font-bold text-[#999999]">{contacts.filter(c => c.totalBalance > 0).length} {lang === 'en' ? 'unpaid accounts' : 'حسابات غير مدفوعة'}</p>
+              <h3 className="text-3xl font-black text-red-500">{t.currencySymbol}{contactsWithAggregatedDebt.reduce((sum, c) => sum + (c.aggregatedDebt || 0), 0).toLocaleString()}</h3>
+              <p className="text-[10px] font-bold text-[#999999]">{contactsWithAggregatedDebt.filter(c => (c.aggregatedDebt || 0) > 0).length} {lang === 'en' ? 'unpaid accounts' : 'حسابات غير مدفوعة'}</p>
            </div>
 
            <div className="bg-white dark:bg-white/5 border-2 border-[#1A1A1A]/5 dark:border-white/10 p-6 rounded-[32px] flex flex-col justify-between">
@@ -2379,18 +2403,24 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                       <div className="md:col-span-2">
                         <Label>{lang === 'en' ? 'Invoice Status' : 'حالة الفاتورة'}</Label>
                         <div className="flex gap-2">
-                          {(['pending', 'paid', 'overdue'] as const).map(s => (
+                          {(['pending', 'paid', 'overdue', 'partially-paid'] as const).map(s => (
                             <button 
                               key={s}
                               onClick={() => setInvoiceData(prev => ({ ...prev, status: s }))}
                               className={cn(
                                 "flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all",
                                 invoiceData.status === s
-                                  ? (s === 'paid' ? "bg-emerald-500 text-white border-emerald-500 shadow-lg shadow-emerald-500/20" : s === 'pending' ? "bg-orange-500 text-white border-orange-500 shadow-lg shadow-orange-500/20" : "bg-red-500 text-white border-red-500 shadow-lg shadow-red-500/20")
+                                  ? (s === 'paid' ? "bg-emerald-500 text-white border-emerald-500 shadow-lg shadow-emerald-500/20" : 
+                                     s === 'pending' ? "bg-orange-500 text-white border-orange-500 shadow-lg shadow-orange-500/20" : 
+                                     s === 'partially-paid' ? "bg-blue-500 text-white border-blue-500 shadow-lg shadow-blue-500/20" :
+                                     "bg-red-500 text-white border-red-500 shadow-lg shadow-red-500/20")
                                   : "bg-white dark:bg-white/5 border-slate-200 dark:border-white/10 text-[#666666]"
                               )}
                             >
-                              {s === 'paid' ? (lang === 'en' ? 'Paid' : 'مدفوعة') : s === 'pending' ? (lang === 'en' ? 'Pending' : 'قيد الانتظار') : (lang === 'en' ? 'Overdue' : 'متأخرة')}
+                              {s === 'paid' ? (lang === 'en' ? 'Paid' : 'مدفوعة') : 
+                               s === 'pending' ? (lang === 'en' ? 'Pending' : 'قيد الانتظار') : 
+                               s === 'partially-paid' ? (lang === 'en' ? 'Partial' : 'باقي') :
+                               (lang === 'en' ? 'Overdue' : 'متأخرة')}
                             </button>
                           ))}
                         </div>
@@ -2611,14 +2641,22 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                         <p className="font-medium">{t.date}: {new Date().toLocaleDateString(lang === 'ar' ? 'ar-EG-u-ca-gregory' : 'en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
                         <p>{t.invoiceNo}: #INV-{Math.floor(100000 + Math.random() * 900000)}</p>
                       </div>
-                      <div className={cn("mt-4 flex", lang === 'ar' ? 'justify-start' : 'justify-end')}>
-                        <span className={cn(
-                          "px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-[0.2em] shadow-sm",
-                          invoiceData.status === 'paid' ? "bg-emerald-500 text-white" : invoiceData.status === 'pending' ? "bg-orange-500 text-white" : "bg-red-500 text-white"
-                        )}>
-                          {invoiceData.status === 'paid' ? (lang === 'en' ? 'Paid' : 'مدفوعة') : invoiceData.status === 'pending' ? (lang === 'en' ? 'Pending' : 'قيد الانتظار') : (lang === 'en' ? 'Overdue' : 'متأخرة')}
-                        </span>
-                      </div>
+                      {!isGenerating && (
+                        <div className={cn("mt-4 flex no-print", lang === 'ar' ? 'justify-start' : 'justify-end')}>
+                          <span className={cn(
+                            "px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-[0.2em] shadow-sm",
+                            invoiceData.status === 'paid' ? "bg-emerald-500 text-white" : 
+                            invoiceData.status === 'pending' ? "bg-orange-500 text-white" : 
+                            invoiceData.status === 'partially-paid' ? "bg-blue-500 text-white" :
+                            "bg-red-500 text-white"
+                          )}>
+                            {invoiceData.status === 'paid' ? (lang === 'en' ? 'Paid' : 'مدفوعة') : 
+                             invoiceData.status === 'pending' ? (lang === 'en' ? 'Pending' : 'قيد الانتظار') : 
+                             invoiceData.status === 'partially-paid' ? (lang === 'en' ? 'Partial' : 'باقي') :
+                             (lang === 'en' ? 'Overdue' : 'متأخرة')}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
 
