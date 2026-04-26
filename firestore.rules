@@ -61,7 +61,8 @@ service cloud.firestore {
     }
 
     function isApproved() {
-      return get(/databases/$(database)/documents/users_profiles/$(request.auth.uid)).data.isApproved == true;
+      return isSignedIn() && 
+             get(/databases/$(database)/documents/users_profiles/$(request.auth.uid)).data.isApproved == true;
     }
 
     function isSuperAdmin() {
@@ -75,53 +76,64 @@ service cloud.firestore {
       allow update: if isSuperAdmin() || (isSignedIn() && request.auth.uid == userId && !incoming().diff(existing()).affectedKeys().hasAny(['isApproved']));
     }
 
+    function canModifyData(ownerId) {
+      return isApproved() && isOwner(ownerId);
+    }
+
     match /invoices/{invoiceId} {
-      allow get: if isOwner(resource.data.userId);
+      allow get: if canModifyData(resource.data.userId);
       allow list: if isApproved() && resource.data.userId == request.auth.uid;
       allow create: if isApproved() && isValidInvoice(incoming());
-      allow update: if isOwner(resource.data.userId) && isValidInvoice(incoming());
-      allow delete: if isOwner(resource.data.userId);
+      allow update: if canModifyData(resource.data.userId) && isValidInvoice(incoming());
+      allow delete: if canModifyData(resource.data.userId);
     }
 
     match /clients/{clientId} {
-      allow get: if isOwner(resource.data.userId);
+      allow get: if canModifyData(resource.data.userId);
       allow list: if isApproved() && resource.data.userId == request.auth.uid;
       allow create: if isApproved() && isValidContact(incoming());
-      allow update: if isOwner(resource.data.userId) && isValidContact(incoming());
-      allow delete: if isOwner(resource.data.userId);
+      allow update: if canModifyData(resource.data.userId) && (
+        !('userId' in incoming()) || incoming().userId == request.auth.uid
+      ) && (!('name' in incoming()) || (incoming().name is string && incoming().name.size() > 0));
+      allow delete: if canModifyData(resource.data.userId);
     }
 
     match /payments/{paymentId} {
-      allow get: if isOwner(resource.data.userId);
+      allow get: if canModifyData(resource.data.userId);
       allow list: if isApproved() && resource.data.userId == request.auth.uid;
       allow create: if isApproved() && isValidPayment(incoming());
-      allow update: if isOwner(resource.data.userId) && isValidPayment(incoming());
-      allow delete: if isOwner(resource.data.userId);
+      allow update: if canModifyData(resource.data.userId) && (
+        !('userId' in incoming()) || incoming().userId == request.auth.uid
+      ) && (!('amount' in incoming()) || incoming().amount is number);
+      allow delete: if canModifyData(resource.data.userId);
     }
 
     match /expenses/{expenseId} {
-      allow get: if isOwner(resource.data.userId);
+      allow get: if canModifyData(resource.data.userId);
       allow list: if isApproved() && resource.data.userId == request.auth.uid;
       allow create: if isApproved() && isValidExpense(incoming());
-      allow update: if isOwner(resource.data.userId) && isValidExpense(incoming());
-      allow delete: if isOwner(resource.data.userId);
+      allow update: if canModifyData(resource.data.userId) && (
+        !('userId' in incoming()) || incoming().userId == request.auth.uid
+      ) && (!('amount' in incoming()) || incoming().amount is number);
+      allow delete: if canModifyData(resource.data.userId);
     }
 
     match /products/{productId} {
-      allow get: if isOwner(resource.data.userId);
+      allow get: if canModifyData(resource.data.userId);
       allow list: if isApproved() && resource.data.userId == request.auth.uid;
       allow create: if isApproved() && isValidProduct(incoming());
-      allow update: if isOwner(resource.data.userId) && isValidProduct(incoming());
-      allow delete: if isOwner(resource.data.userId);
+      allow update: if canModifyData(resource.data.userId) && (
+        !('userId' in incoming()) || incoming().userId == request.auth.uid
+      ) && (!('price' in incoming()) || incoming().price is number);
+      allow delete: if canModifyData(resource.data.userId);
     }
 
     match /businessInfo/{userId} {
-      allow get: if isOwner(userId);
-      // Even though it's set by userId, it's a collection, so list still applies for queries if used
+      allow get: if canModifyData(userId);
       allow list: if isApproved() && resource.data.userId == request.auth.uid;
-      allow create: if isOwner(userId) && isValidBusinessInfo(incoming());
-      allow update: if isOwner(userId) && isValidBusinessInfo(incoming());
-      allow delete: if isOwner(userId);
+      allow create: if canModifyData(userId) && isValidBusinessInfo(incoming());
+      allow update: if canModifyData(userId) && isValidBusinessInfo(incoming());
+      allow delete: if canModifyData(userId);
     }
   }
 }

@@ -635,6 +635,8 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
       return;
     }
 
+    if (!isApproved) return;
+
     const q = query(
       collection(db, "invoices"),
       where("userId", "==", user.uid)
@@ -730,7 +732,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
       unsubProducts();
       unsubBusiness();
     };
-  }, [user, authLoading]);
+  }, [user, authLoading, isApproved]);
 
   // Fetch all users for super admin
   useEffect(() => {
