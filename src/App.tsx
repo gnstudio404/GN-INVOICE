@@ -2832,8 +2832,13 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                 : 'Hi there! You logged in successfully, but the owner needs to approve your account before you can start using it. Please contact the owner to subscribe.'}
         </p>
         <div className="flex flex-col gap-4 w-full max-w-xs">
-            <Button onClick={() => window.open('https://t.me/mostafash187', '_blank')} className="py-4 bg-[#0088cc] hover:bg-[#007dab] text-white">
-                {isAr ? 'تواصل عبر تيليجرام' : 'Contact via Telegram'}
+            <Button onClick={() => window.open('https://t.me/GN_OA', '_blank')} className="py-4 bg-[#0088cc] hover:bg-[#007dab] text-white flex items-center justify-center gap-2">
+                <Send size={18} />
+                {isAr ? 'تواصل عبر تيليجرام (@GN_OA)' : 'Contact via Telegram (@GN_OA)'}
+            </Button>
+            <Button onClick={() => window.open('https://wa.me/201553251011', '_blank')} className="py-4 bg-[#25D366] hover:bg-[#20bd5c] text-white flex items-center justify-center gap-2 border-none">
+                <MessageSquare size={18} />
+                {isAr ? 'تواصل عبر واتساب (01553251011)' : 'Contact via WhatsApp (01553251011)'}
             </Button>
             <Button variant="ghost" onClick={handleLogout} className="py-4">
                 {isAr ? 'تسجيل الخروج' : 'Logout'}
