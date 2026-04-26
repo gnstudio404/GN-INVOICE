@@ -66,7 +66,13 @@ import {
   ArrowDownLeft,
   Filter,
   UserPlus,
-  Link as LinkIcon
+  Link as LinkIcon,
+  TrendingUp,
+  UserMinus,
+  Clock,
+  FileDown,
+  ChartPie,
+  LogOut
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
@@ -78,7 +84,10 @@ import {
   YAxis, 
   CartesianGrid, 
   Tooltip, 
-  ResponsiveContainer 
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell
 } from 'recharts';
 import { cn } from './lib/utils';
 
@@ -1416,20 +1425,31 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     ? invoiceData.customActivity 
     : t.activities[invoiceData.activityIndex];
 
-  const TabButton = ({ children, icon, active, onClick }: { children?: React.ReactNode, icon: React.ReactNode, active: boolean, onClick: () => void }) => (
+  const SidebarNavItem = ({ icon, label, active, onClick, className }: { icon: React.ReactNode, label: string, active: boolean, onClick: () => void, className?: string }) => (
     <button 
       onClick={onClick}
       className={cn(
-        "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all duration-300",
+        "w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold transition-all duration-200 active:scale-95",
         active 
-          ? "bg-white dark:bg-[#1A1A1A] text-[#1A1A1A] dark:text-white shadow-sm" 
-          : "text-[#666666] dark:text-[#94A3B8] hover:bg-white/50 dark:hover:bg-white/5"
+          ? "bg-brand-primary shadow-lg shadow-brand-primary/20 text-white" 
+          : "text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5",
+        className
       )}
     >
-      {icon}
-      <span className="hidden md:inline">{children}</span>
+      <span className={cn("transition-colors", active ? "text-white" : "text-slate-400")}>
+        {icon}
+      </span>
+      <span className="text-sm">{label}</span>
     </button>
   );
+
+  const Layout = ({ children }: { children: React.ReactNode }) => {
+    return (
+      <div className="max-w-7xl mx-auto">
+        {children}
+      </div>
+    );
+  };
 
   const handleCreateInvoiceForContact = async (contact: Contact) => {
     // Generate serial number for the new invoice
@@ -1686,186 +1706,277 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
   };
 
   const DashboardView = () => {
-    // Generate chart data from payments and paid invoices
-    const combinedRevenue = [
-      ...payments.map(p => ({
-        date: p.date?.toDate ? p.date.toDate() : (p.date ? new Date(p.date) : new Date()),
-        amount: Number(p.amount) || 0
-      })),
-      ...savedInvoices.filter(i => i.status === 'paid').map(i => ({
-        date: i.savedAt ? new Date(i.savedAt) : new Date(),
-        amount: Number(i.totalAmount) || 0
-      }))
-    ];
+      // Generate chart data from payments and paid invoices
+      const combinedRevenue = [
+        ...payments.map(p => ({
+          date: p.date?.toDate ? p.date.toDate() : (p.date ? new Date(p.date) : new Date()),
+          amount: Number(p.amount) || 0
+        })),
+        ...savedInvoices.filter(i => i.status === 'paid').map(i => ({
+          date: i.savedAt ? new Date(i.savedAt) : new Date(),
+          amount: Number(i.totalAmount) || 0
+        }))
+      ];
 
-    const chartData = combinedRevenue
-      .sort((a, b) => a.date.getTime() - b.date.getTime())
-      .reduce((acc: any[], item) => {
-        const dateLabel = item.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        const existing = acc.find(entry => entry.date === dateLabel);
-        if (existing) {
-          existing.amount += item.amount;
-        } else {
-          acc.push({ date: dateLabel, amount: item.amount });
-        }
-        return acc;
-      }, [])
-      .slice(-7);
+      const chartData = combinedRevenue
+        .sort((a, b) => a.date.getTime() - b.date.getTime())
+        .reduce((acc: any[], item) => {
+          const dateLabel = item.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+          const existing = acc.find(entry => entry.date === dateLabel);
+          if (existing) {
+            existing.amount += item.amount;
+          } else {
+            acc.push({ date: dateLabel, amount: item.amount });
+          }
+          return acc;
+        }, [])
+        .slice(-7);
 
-    const paymentsTotal = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-    const invoicesTotal = savedInvoices.filter(i => i.status === 'paid').reduce((sum, i) => sum + (Number(i.totalAmount) || 0), 0);
-    const totalRevenue = paymentsTotal + invoicesTotal;
-    const totalExpenses = expenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-    const netProfit = totalRevenue - totalExpenses;
+      const paymentsTotal = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+      const invoicesTotal = savedInvoices.filter(i => i.status === 'paid').reduce((sum, i) => sum + (Number(i.totalAmount) || 0), 0);
+      const totalRevenue = paymentsTotal + invoicesTotal;
+      const totalExpenses = expenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+      const netProfit = totalRevenue - totalExpenses;
 
-    const dashboardInvoices = savedInvoices.slice(0, 5);
+      const dashboardInvoices = savedInvoices.slice(0, 4);
+      
+      // Derive top clients derived from paid revenue
+      const clientStats = contacts.map(c => {
+        const clientPaid = payments.filter(p => p.contactId === c.id).reduce((sum, p) => sum + (Number(p.amount) || 0), 0) +
+                           savedInvoices.filter(i => i.contactId === c.id && i.status === 'paid').reduce((sum, i) => sum + (Number(i.totalAmount) || 0), 0);
+        return { name: c.name, paid: clientPaid };
+      }).sort((a, b) => b.paid - a.paid).slice(0, 3);
 
-    return (
-      <motion.div 
-         key="dashboard"
-         initial={{ opacity: 0 }}
-         animate={{ opacity: 1 }}
-         className="space-y-8"
-      >
-         <div className="grid gap-6 md:grid-cols-4">
-           <div className="bg-[#1A1A1A] text-white p-6 rounded-[32px] relative overflow-hidden flex flex-col justify-between min-h-[140px]">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl" />
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/50">{lang === 'en' ? 'Net Profit' : 'صافي الربح'}</p>
-              <h3 className="text-3xl font-black">{t.currencySymbol}{netProfit.toLocaleString()}</h3>
-              <div className="mt-2 flex items-center gap-1 text-[10px] font-bold text-emerald-400">
-                <ArrowUpRight size={14} />
-                <span>{lang === 'en' ? 'Healthy Margin' : 'هامش ربح جيد'}</span>
-              </div>
-           </div>
-           
-           <div className="bg-white dark:bg-white/5 border-2 border-[#1A1A1A]/5 dark:border-white/10 p-6 rounded-[32px] flex flex-col justify-between">
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#666666] dark:text-[#94A3B8]">{t.totalReceivable}</p>
-              <h3 className="text-3xl font-black text-red-500">{t.currencySymbol}{contactsWithAggregatedDebt.reduce((sum, c) => sum + (c.aggregatedDebt || 0), 0).toLocaleString()}</h3>
-              <p className="text-[10px] font-bold text-[#999999]">{contactsWithAggregatedDebt.filter(c => (c.aggregatedDebt || 0) > 0).length} {lang === 'en' ? 'unpaid accounts' : 'حسابات غير مدفوعة'}</p>
-           </div>
-
-           <div className="bg-white dark:bg-white/5 border-2 border-[#1A1A1A]/5 dark:border-white/10 p-6 rounded-[32px] flex flex-col justify-between">
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#666666] dark:text-[#94A3B8]">{lang === 'en' ? 'Total Expenses' : 'إجمالي المصاريف'}</p>
-              <h3 className="text-3xl font-black">{t.currencySymbol}{totalExpenses.toLocaleString()}</h3>
-              <p className="text-[10px] font-bold text-[#999999]">{expenses.length} {lang === 'en' ? 'recorded items' : 'بند مسجل'}</p>
+      return (
+        <motion.div 
+           key="dashboard"
+           initial={{ opacity: 0, y: 10 }}
+           animate={{ opacity: 1, y: 0 }}
+           className="space-y-10 pb-20"
+        >
+           {/* Header Context */}
+           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+             <div>
+               <h2 className="text-4xl font-black tracking-tight">{lang === 'en' ? 'Financial Overview' : 'نظرة عامة مالية'}</h2>
+               <p className="text-[#666666] dark:text-[#94A3B8] font-medium mt-1">{lang === 'en' ? 'Track your business performance in real-time' : 'تتبع أداء عملك في الوقت الفعلي'}</p>
+             </div>
+             <div className="flex items-center gap-3">
+               <div className="px-4 py-2 rounded-2xl bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 flex items-center gap-2">
+                 <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                 <span className="text-[10px] font-black uppercase tracking-widest">{lang === 'en' ? 'Live Data' : 'بيانات حية'}</span>
+               </div>
+             </div>
            </div>
 
-           <div className="bg-white dark:bg-white/5 border-2 border-[#1A1A1A]/5 dark:border-white/10 p-6 rounded-[32px] flex flex-col justify-between">
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#666666] dark:text-[#94A3B8]">{lang === 'en' ? 'Pending Invoices' : 'الفواتير المعلقة'}</p>
-              <h3 className="text-3xl font-black">{savedInvoices.filter(i => i.status === 'pending').length}</h3>
-              <p className="text-[10px] font-bold text-[#999999]">{lang === 'en' ? 'Action required' : 'تحتاج للمتابعة'}</p>
-           </div>
-         </div>
-
-         <div className="grid gap-6 lg:grid-cols-3">
-           <div className="lg:col-span-2 bg-white dark:bg-white/5 border-2 border-[#1A1A1A]/5 dark:border-white/10 p-8 rounded-[40px]">
-              <div className="flex items-center justify-between mb-8">
-                <h3 className="text-xl font-black">{lang === 'en' ? 'Revenue Flow' : 'تدفق الإيرادات'}</h3>
-                <div className="flex items-center gap-4 text-xs font-bold text-[#666666]">
-                  <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-blue-600" /> {lang === 'en' ? 'Payments' : 'التحصيلات'}</div>
+           {/* Top Stats - Bento Style */}
+           <div className="grid gap-6 md:grid-cols-4">
+             <div className="bg-brand-primary text-white p-8 rounded-[40px] relative overflow-hidden flex flex-col justify-between min-h-[200px] shadow-2xl shadow-brand-primary/20 group">
+                <div className="absolute top-0 right-0 w-40 h-40 bg-white/20 rounded-full translate-x-1/2 -translate-y-1/2 blur-3xl group-hover:bg-white/30 transition-all" />
+                <div className="flex items-center justify-between relative z-10">
+                  <div className="p-3 rounded-2xl bg-white/10 backdrop-blur-md">
+                    <TrendingUp size={24} className="text-white" />
+                  </div>
+                  <span className="text-[10px] font-black text-white bg-white/20 px-3 py-1.5 rounded-xl backdrop-blur-md uppercase tracking-widest">+{lang === 'en' ? '12% MoM' : '١٢٪ نمو'}</span>
                 </div>
-              </div>
-              <div className="h-[250px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={chartData}>
-                    <defs>
-                      <linearGradient id="colorAmount" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#2563eb" stopOpacity={0.3}/>
-                        <stop offset="95%" stopColor="#2563eb" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" opacity={0.1} />
-                    <XAxis 
-                      dataKey="date" 
-                      axisLine={false} 
-                      tickLine={false} 
-                      tick={{ fontSize: 10, fill: '#94A3B8' }}
-                      dy={10}
-                    />
-                    <YAxis hide />
-                    <Tooltip 
-                      contentStyle={{ backgroundColor: '#1A1A1A', border: 'none', borderRadius: '12px', color: '#fff' }}
-                      itemStyle={{ color: '#fff' }}
-                    />
-                    <Area type="monotone" dataKey="amount" stroke="#2563eb" strokeWidth={4} fillOpacity={1} fill="url(#colorAmount)" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
+                <div className="relative z-10">
+                  <p className="text-[11px] font-black uppercase tracking-[0.2em] text-white/70 mb-1">{lang === 'en' ? 'Net Profit' : 'صافي الربح'}</p>
+                  <h3 className="text-4xl font-black">{t.currencySymbol}{netProfit.toLocaleString()}</h3>
+                </div>
+             </div>
+             
+             <div className="bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 p-8 rounded-[40px] flex flex-col justify-between group hover:border-brand-tertiary/20 transition-all min-h-[200px]">
+                <div className="flex items-center justify-between">
+                  <div className="p-3 rounded-2xl bg-brand-tertiary/5 dark:bg-brand-tertiary/10">
+                    <Clock size={24} className="text-brand-tertiary" />
+                  </div>
+                  <span className="text-[10px] font-black text-brand-tertiary uppercase tracking-widest">{lang === 'en' ? 'Pending' : 'معلقة'}</span>
+                </div>
+                <div>
+                   <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400 mb-1">{t.totalReceivable}</p>
+                   <h3 className="text-4xl font-black text-brand-tertiary">{t.currencySymbol}{contactsWithAggregatedDebt.reduce((sum, c) => sum + (c.aggregatedDebt || 0), 0).toLocaleString()}</h3>
+                </div>
+             </div>
+
+             <div className="bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 p-8 rounded-[40px] flex flex-col justify-between group hover:border-brand-secondary/20 transition-all min-h-[200px]">
+                <div className="flex items-center justify-between">
+                  <div className="p-3 rounded-2xl bg-brand-secondary/5 dark:bg-brand-secondary/10">
+                    <ArrowDownLeft size={24} className="text-brand-secondary" />
+                  </div>
+                </div>
+                <div>
+                   <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400 mb-1">{lang === 'en' ? 'Total Expenses' : 'إجمالي المصاريف'}</p>
+                   <h3 className="text-4xl font-black text-brand-secondary">{t.currencySymbol}{totalExpenses.toLocaleString()}</h3>
+                </div>
+             </div>
+
+             <div className="bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 p-8 rounded-[40px] flex flex-col justify-between group hover:border-brand-primary/20 transition-all min-h-[200px]">
+                <div className="flex items-center justify-between">
+                  <div className="p-3 rounded-2xl bg-brand-primary/5 dark:bg-brand-primary/10">
+                    <FileText size={24} className="text-brand-primary" />
+                  </div>
+                </div>
+                <div>
+                   <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400 mb-1">{lang === 'en' ? 'Pending Invoices' : 'الفواتير المعلقة'}</p>
+                   <h3 className="text-4xl font-black text-brand-primary">{savedInvoices.filter(i => i.status === 'pending').length}</h3>
+                </div>
+             </div>
            </div>
 
-           <div className="bg-white dark:bg-white/5 border-2 border-[#1A1A1A]/5 dark:border-white/10 p-8 rounded-[40px]">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-xl font-black">{lang === 'en' ? 'Quick Actions' : 'إجراءات سريعة'}</h3>
-              </div>
-              <div className="space-y-3">
-                <button onClick={() => { setActiveTab('invoices'); setIsPreviewMode(false); }} className="w-full p-4 rounded-2xl bg-blue-50 dark:bg-blue-500/10 text-blue-600 font-bold flex items-center justify-between hover:scale-[1.02] transition-all">
-                  <div className="flex items-center gap-3">
-                    <FileText size={20} />
-                    <span>{lang === 'en' ? 'Create Invoice' : 'فاتورة جديدة'}</span>
+           {/* Middle Grid */}
+           <div className="grid gap-8 lg:grid-cols-12">
+             <div className="lg:col-span-8 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 p-10 rounded-[48px] shadow-sm">
+                <div className="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-4">
+                  <div>
+                    <h3 className="text-2xl font-black tracking-tight">{lang === 'en' ? 'Revenue Flow' : 'تدفق الإيرادات'}</h3>
+                    <p className="text-xs text-slate-400 font-medium">{lang === 'en' ? 'Weekly revenue tracking' : 'تتبع الإيرادات الأسبوعية'}</p>
                   </div>
-                  <ChevronRight size={18} />
-                </button>
-                <button onClick={() => setShowAddContact(true)} className="w-full p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 font-bold flex items-center justify-between hover:scale-[1.02] transition-all">
-                  <div className="flex items-center gap-3">
-                    <UserPlus size={20} />
-                    <span>{lang === 'en' ? 'Add Client' : 'إضافة عميل'}</span>
+                  <div className="flex items-center gap-2">
+                    <button className="px-5 py-2 text-[10px] font-black uppercase tracking-widest bg-slate-100 dark:bg-white/5 text-slate-500 rounded-full">{lang === 'en' ? 'Weekly' : 'أسبوعي'}</button>
+                    <button className="px-5 py-2 text-[10px] font-black uppercase tracking-widest bg-brand-primary text-white rounded-full shadow-lg shadow-brand-primary/20">{lang === 'en' ? 'Monthly' : 'شهري'}</button>
                   </div>
-                  <ChevronRight size={18} />
-                </button>
-                <button onClick={() => setActiveTab('expenses')} className="w-full p-4 rounded-2xl bg-red-50 dark:bg-red-500/10 text-red-600 font-bold flex items-center justify-between hover:scale-[1.02] transition-all">
-                  <div className="flex items-center gap-3">
-                    <ArrowDownLeft size={20} />
-                    <span>{lang === 'en' ? 'Add Expense' : 'إضافة مصروف'}</span>
-                  </div>
-                  <ChevronRight size={18} />
-                </button>
-                <button onClick={() => setActiveTab('payments')} className="w-full p-4 rounded-2xl bg-orange-50 dark:bg-orange-500/10 text-orange-600 font-bold flex items-center justify-between hover:scale-[1.02] transition-all">
-                  <div className="flex items-center gap-3">
-                    <Wallet size={20} />
-                    <span>{lang === 'en' ? 'Record Payment' : 'تسجيل دفعة'}</span>
-                  </div>
-                  <ChevronRight size={18} />
-                </button>
-              </div>
-           </div>
-         </div>
+                </div>
+                <div className="h-[320px] w-full mt-4">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={chartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="dashboardGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#004ac6" stopOpacity={0.15}/>
+                          <stop offset="95%" stopColor="#004ac6" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="6 6" vertical={false} stroke="#94A3B8" opacity={0.15} />
+                      <XAxis 
+                        dataKey="date" 
+                        axisLine={false} 
+                        tickLine={false} 
+                        tick={{ fontSize: 11, fill: '#64748B', fontWeight: 600 }}
+                        dy={15}
+                      />
+                      <Tooltip 
+                        contentStyle={{ 
+                          borderRadius: '16px', 
+                          border: 'none', 
+                          boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
+                          backgroundColor: '#1e293b',
+                          color: '#fff'
+                        }}
+                        itemStyle={{ color: '#fff', fontSize: '12px', fontWeight: 'bold' }}
+                      />
+                      <Area 
+                        type="monotone" 
+                        dataKey="amount" 
+                        stroke="#004ac6" 
+                        strokeWidth={4}
+                        fillOpacity={1} 
+                        fill="url(#dashboardGradient)" 
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+             </div>
 
-         <div className="bg-white dark:bg-white/5 border-2 border-[#1A1A1A]/5 dark:border-white/10 p-8 rounded-[40px]">
-            <div className="flex items-center justify-between mb-8">
-              <h3 className="text-xl font-black">{lang === 'en' ? 'Recent Invoices' : 'آخر الفواتير'}</h3>
-              <Button variant="ghost" size="sm" onClick={() => setShowHistory(true)} className="text-blue-500 font-bold">{lang === 'en' ? 'View All' : 'عرض الكل'}</Button>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {dashboardInvoices.map(inv => (
-                <div key={inv.id} className="flex flex-col p-6 rounded-3xl bg-slate-50 dark:bg-white/5 border border-transparent hover:border-blue-500/30 transition-all cursor-pointer" onClick={() => handleLoadInvoice(inv)}>
-                  <div className="flex items-center justify-between mb-4">
-                    <div className={cn("px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest", inv.status === 'paid' ? "bg-emerald-500/10 text-emerald-500" : "bg-amber-500/10 text-amber-500")}>
-                      {inv.status === 'paid' ? (lang === 'en' ? 'Paid' : 'مدفوعة') : (lang === 'en' ? 'Pending' : 'معلقة')}
+             {/* Quick Actions & Top Clients */}
+             <div className="lg:col-span-4 space-y-6">
+                <div className="bg-slate-900 text-white p-8 rounded-[40px] relative overflow-hidden group">
+                  <div className="relative z-10">
+                    <h3 className="text-lg font-black mb-6">{lang === 'en' ? 'Quick Actions' : 'إجراءات سريعة'}</h3>
+                    <div className="grid gap-3">
+                      <button 
+                        onClick={() => { setActiveTab('invoices'); setIsPreviewMode(false); }}
+                        className="w-full flex items-center justify-between p-4 bg-white/10 hover:bg-white/20 rounded-2xl transition-all group"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Plus size={18} className="text-white" />
+                          <span className="text-xs font-black uppercase tracking-widest">{lang === 'en' ? 'New Invoice' : 'فاتورة جديدة'}</span>
+                        </div>
+                        <ChevronRight size={16} className="text-white/40 group-hover:translate-x-1" />
+                      </button>
+                      <button 
+                         onClick={() => setShowAddContact(true)}
+                         className="w-full flex items-center justify-between p-4 bg-white/10 hover:bg-white/20 rounded-2xl transition-all group"
+                      >
+                         <div className="flex items-center gap-3">
+                           <UserPlus size={18} className="text-white" />
+                           <span className="text-xs font-black uppercase tracking-widest">{lang === 'en' ? 'Add Client' : 'إضافة عميل'}</span>
+                         </div>
+                         <ChevronRight size={16} className="text-white/40 group-hover:translate-x-1" />
+                      </button>
                     </div>
-                    <span className="text-[10px] text-[#999999]">{inv.savedAt ? new Date(inv.savedAt).toLocaleDateString() : ''}</span>
-                  </div>
-                  <h4 className="font-bold mb-1 truncate">{inv.invoiceTitle || t.invoiceTitleDefault}</h4>
-                  <p className="text-xs text-[#666666] dark:text-[#94A3B8] mb-4 truncate">{inv.clientName || t.client}</p>
-                  <div className="mt-auto pt-4 border-t border-[#1A1A1A]/5 dark:border-white/5 flex items-center justify-between">
-                    <span className="text-lg font-black">{t.currencySymbol}{(inv.totalAmount || 0).toLocaleString()}</span>
-                    <div className="h-8 w-8 rounded-full bg-white dark:bg-white/10 flex items-center justify-center shadow-sm">
-                      <ChevronRight size={16} />
-                    </div>
                   </div>
                 </div>
-              ))}
-              {dashboardInvoices.length === 0 && (
-                <div className="sm:col-span-2 lg:col-span-3 py-20 text-center border-2 border-dashed border-slate-200 dark:border-white/10 rounded-3xl">
-                  <p className="text-[#999999] font-bold">{lang === 'en' ? 'No recent invoices' : 'لا يوجد فواتير مؤخراً'}</p>
-                </div>
-              )}
-            </div>
-         </div>
-      </motion.div>
-    );
-  };
 
-  const PaymentsView = () => (
+                <div className="bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 p-8 rounded-[40px] flex-1">
+                   <h3 className="text-lg font-black mb-6 flex items-center gap-2 text-on-surface dark:text-white">
+                     <ChartPie size={20} className="text-brand-primary" />
+                     {lang === 'en' ? 'Top Clients' : 'أهم العملاء'}
+                   </h3>
+                   <div className="space-y-5">
+                     {clientStats.map((client, i) => (
+                       <div key={i} className="flex items-center gap-4 group">
+                         <div className="w-12 h-12 rounded-2xl bg-slate-50 dark:bg-white/5 flex items-center justify-center font-black text-brand-primary border border-slate-100 dark:border-white/10 group-hover:bg-brand-primary group-hover:text-white transition-all">
+                           {(i + 1).toString().padStart(2, '0')}
+                         </div>
+                         <div className="flex-1">
+                           <p className="text-sm font-black truncate text-on-surface dark:text-white">{client.name}</p>
+                           <p className="text-[10px] text-slate-400 font-bold uppercase">{t.currencySymbol}{client.paid.toLocaleString()}</p>
+                         </div>
+                       </div>
+                     ))}
+                     {clientStats.length === 0 && <p className="text-xs text-slate-400 italic text-center py-4">{lang === 'en' ? 'No data yet' : 'لا توجد بيانات بعد'}</p>}
+                   </div>
+                </div>
+             </div>
+           </div>
+
+           {/* Bottom Section: Recent Activities */}
+           <div className="space-y-6">
+             <div className="flex items-center justify-between px-2">
+               <h3 className="text-2xl font-black tracking-tight">{lang === 'en' ? 'Recent Invoices' : 'آخر الفواتير'}</h3>
+               <button onClick={() => setActiveTab('history')} className="text-xs font-black uppercase tracking-widest text-brand-primary hover:underline">{lang === 'en' ? 'View All' : 'عرض الكل'}</button>
+             </div>
+             <div className="grid gap-4">
+               {dashboardInvoices.map((inv) => (
+                 <div 
+                   key={inv.id} 
+                   onClick={() => handleLoadInvoice(inv)}
+                   className="bg-white dark:bg-white/5 border border-slate-100 dark:border-white/10 p-5 rounded-3xl flex items-center justify-between group hover:border-brand-primary/30 transition-all cursor-pointer"
+                 >
+                   <div className="flex items-center gap-5">
+                     <div className="w-14 h-14 rounded-2xl bg-slate-50 dark:bg-white/5 flex items-center justify-center text-slate-400 group-hover:bg-brand-primary/10 group-hover:text-brand-primary transition-all">
+                       <FileText size={24} />
+                     </div>
+                     <div>
+                       <h4 className="font-black text-sm uppercase tracking-tight text-on-surface dark:text-white">{inv.invoiceTitle || t.invoiceTitleDefault}</h4>
+                       <p className="text-[10px] text-slate-400 font-bold">{inv.clientName} • {inv.savedAt ? new Date(inv.savedAt).toLocaleDateString() : ''}</p>
+                     </div>
+                   </div>
+                   <div className="flex items-center gap-10">
+                     <div className={cn(
+                       "px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest",
+                       inv.status === 'paid' ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-brand-tertiary/10 text-brand-tertiary border border-brand-tertiary/20"
+                     )}>
+                        {inv.status === 'paid' ? (lang === 'en' ? 'Paid' : 'مدفوعة') : (lang === 'en' ? 'Pending' : 'معلقة')}
+                     </div>
+                     <div className="text-left w-24">
+                       <p className="text-xl font-black text-on-surface dark:text-white">{t.currencySymbol}{(inv.totalAmount || 0).toLocaleString()}</p>
+                     </div>
+                     <ChevronRight size={18} className="text-slate-200 group-hover:text-brand-primary transition-all" />
+                   </div>
+                 </div>
+               ))}
+               {dashboardInvoices.length === 0 && (
+                 <div className="py-20 text-center border-2 border-dashed border-slate-100 dark:border-white/10 rounded-[40px]">
+                   <Search size={40} className="mx-auto mb-4 text-slate-200" />
+                   <p className="text-slate-400 font-bold">{lang === 'en' ? 'No recent business activity' : 'لا يوجد نشاط تجاري مؤخراً'}</p>
+                 </div>
+               )}
+             </div>
+           </div>
+        </motion.div>
+      );
+    };
+
+    const PaymentsView = () => (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
       <div className="flex items-center justify-between">
         <div>
@@ -2106,115 +2217,140 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
   return (
     <div 
       className={cn(
-        "min-h-screen bg-[#FDFDFD] dark:bg-[#060B16] text-[#1A1A1A] dark:text-[#E2E8F0] transition-colors duration-300 selection:bg-[#1A1A1A] selection:text-white", 
+        "min-h-screen bg-surface-bg dark:bg-[#060B16] text-on-surface dark:text-[#E2E8F0] transition-colors duration-300 selection:bg-brand-primary selection:text-white pb-10", 
         lang === 'ar' ? 'font-arabic' : 'font-sans'
       )} 
       dir={lang === 'ar' ? 'rtl' : 'ltr'}
     >
       {showDebug && <DebugPanel />}
-      <button 
-        onDoubleClick={() => setShowDebug(true)} 
-        className="fixed bottom-2 left-2 z-[9999] opacity-0 hover:opacity-100 bg-black/20 text-[8px] text-white p-1 rounded-sm cursor-pointer"
-      >
-        DEV DBG
-      </button>
-      {/* Persistence Notice */}
+      
+      {/* Sidebar Navigation */}
+      <aside className={cn(
+        "no-print fixed top-0 bottom-0 w-64 bg-white dark:bg-slate-900 border-slate-200 dark:border-white/5 z-50 transition-all duration-300 hidden lg:flex flex-col shadow-xl",
+        lang === 'ar' ? 'right-0 border-l' : 'left-0 border-r'
+      )}>
+        <div className="p-8 flex flex-col items-center border-b border-slate-50 dark:border-white/5">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-primary text-white shadow-lg shadow-brand-primary/20 mb-4">
+            <FileText size={28} strokeWidth={2.5} />
+          </div>
+          <span className="text-2xl font-black tracking-tighter text-brand-primary">{t.title}</span>
+          <span className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-widest">{lang === 'en' ? 'Invoice Master' : 'نظام إدارة الفواتير'}</span>
+        </div>
+
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto mt-6">
+          <SidebarNavItem icon={<LayoutDashboard size={20} />} label={t.dashboard} active={activeTab === 'dashboard'} onClick={() => { setActiveTab('dashboard'); setIsPreviewMode(false); }} />
+          <SidebarNavItem icon={<FileText size={20} />} label={t.invoice} active={activeTab === 'invoices'} onClick={() => { setActiveTab('invoices'); setIsPreviewMode(false); }} />
+          <SidebarNavItem icon={<Users size={20} />} label={t.clients} active={activeTab === 'contacts'} onClick={() => { setActiveTab('contacts'); setIsPreviewMode(false); }} />
+          <SidebarNavItem icon={<Wallet size={20} />} label={lang === 'en' ? 'Payments' : 'المدفوعات'} active={activeTab === 'payments'} onClick={() => { setActiveTab('payments'); setIsPreviewMode(false); }} />
+          <SidebarNavItem icon={<ArrowDownLeft size={20} />} label={lang === 'en' ? 'Expenses' : 'المصاريف'} active={activeTab === 'expenses'} onClick={() => { setActiveTab('expenses'); setIsPreviewMode(false); }} />
+        </nav>
+
+        <div className="p-6 border-t border-slate-50 dark:border-white/5 space-y-2">
+          <button 
+            onClick={() => { setActiveTab('invoices'); setIsPreviewMode(false); }}
+            className="w-full bg-brand-primary text-white py-4 rounded-2xl font-black text-sm mb-4 hover:shadow-lg shadow-brand-primary/20 transition-all active:scale-95 flex items-center justify-center gap-2"
+          >
+            <Plus size={18} />
+            {lang === 'en' ? 'New Invoice' : 'فاتورة جديدة'}
+          </button>
+          <SidebarNavItem icon={<Settings size={20} />} label={lang === 'en' ? 'Settings' : 'الإعدادات'} active={activeTab === 'profile'} onClick={() => { setActiveTab('profile'); setIsPreviewMode(false); }} />
+          <SidebarNavItem icon={<LogOut size={20} />} label={t.logout} active={false} onClick={handleLogout} className="text-red-500 hover:bg-red-50 dark:hover:bg-red-500/5" />
+        </div>
+      </aside>
+
+      {/* Persistence Notice (Sticky overlay) */}
       {!user && (
-        <div className="no-print bg-amber-50 dark:bg-amber-900/10 border-b border-amber-200 dark:border-amber-900/10 p-2 text-center">
-          <p className="text-[10px] md:text-xs font-bold text-amber-700 dark:text-amber-400 flex items-center justify-center gap-2">
+        <div className={cn("no-print fixed top-0 left-0 right-0 z-[100] bg-amber-50 dark:bg-amber-900/10 border-b border-amber-200 dark:border-amber-900/10 p-2 text-center", lang === 'ar' ? 'lg:mr-64' : 'lg:ml-64')}>
+          <p className="text-[10px] md:text-sm font-bold text-amber-700 dark:text-amber-400 flex items-center justify-center gap-2">
             <CloudOff size={14} />
             {lang === 'en' 
-              ? 'Guest Mode: Data saved only in this browser. Login to sync with cloud.' 
-              : 'وضع الزائر: البيانات محفوظة في هذا المتصفح فقط. سجل دخولك للمزامنة السحابية.'}
+              ? 'Guest Mode: Login to sync with cloud.' 
+              : 'وضع الزائر: سجل دخولك للمزامنة السحابية.'}
             <button onClick={() => navigate('/login')} className="underline ml-1 cursor-pointer font-black">{t.login}</button>
           </p>
         </div>
       )}
 
-      {user && hasLocalData && (
-        <div className="no-print bg-blue-600 p-2 text-center">
-          <p className="text-[10px] md:text-xs font-bold text-white flex items-center justify-center gap-4">
-            <Cloud size={14} />
-            {lang === 'en' 
-              ? 'You have offline data from your guest session. Sync it to your Google account?' 
-              : 'لديك بيانات من جلسة الزائر. هل تود مزامنتها مع حساب جوجل الخاص بك؟'}
-            <Button size="sm" onClick={handleSyncData} disabled={isSavingToFirestore} className="bg-white text-blue-600 hover:bg-blue-50 h-7 text-[10px] px-4 font-black">
-              {isSavingToFirestore ? (isAr ? 'جاري المزامنة...' : 'Syncing...') : (isAr ? 'مزامنة الآن' : 'Sync Now')}
-            </Button>
-          </p>
-        </div>
-      )}
-
-      {/* Header */}
-      <header className="no-print sticky top-0 z-50 w-full border-b border-[#F0F0F0] dark:border-white/5 bg-white/80 dark:bg-[#060B16]/80 backdrop-blur-md">
-        <div className="container mx-auto flex h-16 items-center px-4 md:px-8">
-          <div className="flex flex-1 items-center justify-start gap-2.5">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#1A1A1A] dark:bg-[#E2E8F0] text-white dark:text-[#060B16] shadow-lg shadow-[#1A1A1A]/10">
-              <FileText size={24} strokeWidth={2.5} />
-            </div>
-            <span className="text-xl font-bold tracking-tight text-[#1A1A1A] dark:text-[#E2E8F0] hidden sm:inline-block">{t.title}</span>
-          </div>
-
-          <nav className="hidden lg:flex items-center gap-1 bg-slate-100/50 dark:bg-white/5 p-1 rounded-xl">
-            <TabButton icon={<LayoutDashboard size={18} />} active={activeTab === 'dashboard'} onClick={() => { setActiveTab('dashboard'); setIsPreviewMode(false); }}>{t.dashboard}</TabButton>
-            <TabButton icon={<Plus size={18} />} active={activeTab === 'invoices'} onClick={() => {
-              setActiveTab('invoices');
-              setIsPreviewMode(false);
-            }}>{t.invoice}</TabButton>
-            <TabButton icon={<Users size={18} />} active={activeTab === 'contacts'} onClick={() => { setActiveTab('contacts'); setIsPreviewMode(false); }}>{t.clients}</TabButton>
-            <TabButton icon={<Wallet size={18} />} active={activeTab === 'payments'} onClick={() => { setActiveTab('payments'); setIsPreviewMode(false); }}>{lang === 'en' ? 'Payments' : 'المدفوعات'}</TabButton>
-            <TabButton icon={<ArrowDownLeft size={18} />} active={activeTab === 'expenses'} onClick={() => { setActiveTab('expenses'); setIsPreviewMode(false); }}>{lang === 'en' ? 'Expenses' : 'المصاريف'}</TabButton>
-            <TabButton icon={<Settings size={18} />} active={activeTab === 'profile'} onClick={() => { setActiveTab('profile'); setIsPreviewMode(false); }}>{lang === 'en' ? 'My Data' : 'بياناتي'}</TabButton>
-          </nav>
-
-          {/* Centered for mobile/smaller screens fallback or keep same nav but hidden logic */}
-          <nav className="flex lg:hidden items-center gap-1 bg-slate-100/50 dark:bg-white/5 p-1 rounded-xl mx-auto">
-             <TabButton icon={<LayoutDashboard size={18} />} active={activeTab === 'dashboard'} onClick={() => { setActiveTab('dashboard'); setIsPreviewMode(false); }} />
-             <TabButton icon={<Plus size={18} />} active={activeTab === 'invoices'} onClick={() => { setActiveTab('invoices'); setIsPreviewMode(false); }} />
-             <TabButton icon={<Settings size={18} />} active={activeTab === 'profile'} onClick={() => { setActiveTab('profile'); setIsPreviewMode(false); }} />
-          </nav>
-          
-          <div className="flex flex-1 items-center justify-end gap-2 sm:gap-4">
-            <div className="flex items-center gap-1">
-              <Button variant="ghost" size="icon" onClick={() => setShowDebug(!showDebug)} className="h-10 w-10 rounded-full text-blue-500">
-                <Settings size={22} />
-              </Button>
-              <Button variant="ghost" size="icon" onClick={() => setIsDarkMode(!isDarkMode)} className="h-10 w-10 rounded-full">
-                {isDarkMode ? <Sun size={22} /> : <Moon size={22} />}
-              </Button>
-              <Button variant="ghost" size="icon" onClick={() => setLang(lang === 'en' ? 'ar' : 'en')} className="h-10 w-10 rounded-full">
-                <Languages size={22} />
-              </Button>
-            </div>
-
-            {user && (
-              <div className="hidden md:flex items-center gap-3 ml-2 border-l border-[#F0F0F0] dark:border-white/5 pl-4">
-                <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-[10px] font-black uppercase tracking-wider">
-                  <div className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                  </div>
-                  {lang === 'en' ? 'Cloud Secure' : 'حفظ سحابي آمن'}
-                </div>
-                {user.photoURL && (
-                  <img 
-                    src={user.photoURL} 
-                    alt="User" 
-                    className="h-8 w-8 rounded-full border border-[#1A1A1A] dark:border-white/20"
-                    referrerPolicy="no-referrer"
-                  />
-                )}
-                <Button variant="ghost" size="sm" onClick={handleLogout} className="text-[10px] font-black uppercase tracking-wider text-red-500">
-                  {t.logout}
-                </Button>
+      {/* Main Content Area */}
+      <div className={cn(
+        "transition-all duration-300",
+        lang === 'ar' ? 'lg:mr-64' : 'lg:ml-64'
+      )}>
+        {/* Top bar Header */}
+        <header className="no-print sticky top-0 z-40 bg-white/80 dark:bg-[#060B16]/80 backdrop-blur-md border-b border-slate-100 dark:border-white/5">
+          <div className="px-6 h-16 flex items-center justify-between">
+            {/* Mobile Nav Toggle / Search */}
+            <div className="flex items-center gap-4 flex-1">
+              <div className="lg:hidden p-2 rounded-xl bg-slate-100 dark:bg-white/5">
+                <FileText size={24} className="text-brand-primary" />
               </div>
-            )}
-          </div>
-        </div>
-      </header>
+              <div className="relative max-w-md w-full hidden md:block">
+                <Search size={18} className={cn("absolute top-1/2 -translate-y-1/2 text-slate-400", lang === 'ar' ? 'right-3' : 'left-3')} />
+                <input 
+                  type="text" 
+                  placeholder={lang === 'en' ? 'Search records...' : 'بحث في السجلات...'} 
+                  className={cn("w-full py-2 bg-slate-50/50 dark:bg-white/5 border border-slate-100 dark:border-white/10 rounded-xl text-sm focus:ring-2 focus:ring-brand-primary/20 outline-none transition-all", lang === 'ar' ? 'pr-10 pl-4' : 'pl-10 pr-4')}
+                />
+              </div>
+            </div>
 
-      <main className="container mx-auto px-4 py-8 md:px-8 lg:py-12">
-        <AnimatePresence mode="wait">
+            {/* Profile & Tools */}
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1">
+                <Button variant="ghost" size="icon" onClick={() => setIsDarkMode(!isDarkMode)} className="h-10 w-10 border border-transparent hover:border-slate-100 dark:hover:border-white/10 rounded-full">
+                  {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+                </Button>
+                <Button variant="ghost" size="icon" onClick={() => setLang(lang === 'en' ? 'ar' : 'en')} className="h-10 w-10 border border-transparent hover:border-slate-100 dark:hover:border-white/10 rounded-full font-black text-xs">
+                  {lang === 'en' ? 'AR' : 'EN'}
+                </Button>
+                {user && (
+                  <Button variant="ghost" size="icon" onClick={() => setShowDebug(!showDebug)} className="h-10 w-10 border border-transparent hover:border-slate-100 dark:hover:border-white/10 rounded-full text-brand-primary/60">
+                    <Settings size={20} />
+                  </Button>
+                )}
+              </div>
+
+              <div className="h-8 w-[1px] bg-slate-100 dark:bg-white/10 mx-2" />
+
+              {user ? (
+                <div className="flex items-center gap-3 cursor-pointer group px-2 py-1 rounded-xl hover:bg-slate-50 dark:hover:bg-white/5 transition-all">
+                  <div className="text-right hidden sm:block">
+                    <p className="text-xs font-black leading-tight">{user.displayName || user.email?.split('@')[0]}</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase">{lang === 'en' ? 'Account Admin' : 'مدير الحساب'}</p>
+                  </div>
+                  {user.photoURL ? (
+                    <img src={user.photoURL} alt="User" className="w-10 h-10 rounded-full border-2 border-brand-primary/10 group-hover:border-brand-primary transition-all" referrerPolicy="no-referrer" />
+                  ) : (
+                    <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-white/5 flex items-center justify-center font-black text-brand-primary">
+                      {user.email?.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <Button size="sm" onClick={() => navigate('/login')} className="rounded-xl bg-brand-primary font-black text-xs px-4">
+                  {t.login}
+                </Button>
+              )}
+            </div>
+          </div>
+        </header>
+
+        {/* Global Persistence Notification if syncing */}
+        {user && hasLocalData && (
+          <div className="no-print bg-blue-600/10 dark:bg-blue-600/5 p-3 flex items-center justify-center gap-3 border-b border-blue-100 dark:border-blue-900/10">
+            <p className="text-xs font-bold text-blue-700 dark:text-blue-400">
+              {lang === 'en' 
+                ? 'You have unsynced guest data.' 
+                : 'لديك بيانات غير متزامنة من وضع الزائر.'}
+            </p>
+            <Button size="sm" onClick={handleSyncData} disabled={isSavingToFirestore} className="bg-blue-600 text-white h-7 text-[10px] px-3 font-black rounded-lg">
+              {isSavingToFirestore ? (isAr ? 'جاري...' : 'Syncing...') : (isAr ? 'دمج البيانات' : 'Sync Now')}
+            </Button>
+          </div>
+        )}
+
+        <main className="px-6 py-10 md:px-10 lg:py-12">
+          <AnimatePresence mode="wait">
           {activeTab === 'invoices' ? (
             !isPreviewMode ? (
             <motion.div
@@ -3177,7 +3313,8 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
         )}
       </AnimatePresence>
     </div>
-  );
+  </div>
+);
 }
 
 export default function App() {

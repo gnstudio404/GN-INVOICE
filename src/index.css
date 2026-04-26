@@ -5,6 +5,17 @@
   --font-sans: "Inter", "Cairo", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Space Grotesk", "Cairo", sans-serif;
   --font-arabic: "Cairo", sans-serif;
+
+  /* GN Invoice Professional Palette */
+  --color-brand-primary: #004ac6;
+  --color-brand-secondary: #006c49;
+  --color-brand-tertiary: #943700;
+  --color-surface-bg: #F8FAFC;
+  --color-card-border: #E2E8F0;
+  
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+  --radius-3xl: 2rem;
 }
 
 @custom-variant dark (&:where(.dark, .dark *));
