@@ -27,6 +27,7 @@ import {
   deleteDoc, 
   doc, 
   getDoc,
+  getDocs,
   setDoc,
   orderBy, 
   updateDoc,
@@ -312,6 +313,7 @@ interface InvoiceData {
   totalAmount: number;
   status: 'paid' | 'pending' | 'overdue' | 'partially-paid';
   savedAt?: string;
+  updatedAt?: any;
 }
 
 interface Contact {
@@ -862,7 +864,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
         return updated;
       });
 
-      // Update contact balance for guest
+      // Update contact balance and create payment record for guest
       if (invoiceToSave.contactId) {
         setContacts(prev => {
           const updated = prev.map(c => {
@@ -880,6 +882,29 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
           localStorage.setItem('gn_contacts', JSON.stringify(updated));
           return updated;
         });
+
+        if (invoiceToSave.status === 'paid') {
+          // Check if payment already exists for this invoice locally
+          const guestPayments = JSON.parse(localStorage.getItem('gn_payments') || '[]');
+          const alreadyPaid = guestPayments.some((p: any) => p.invoiceId === currentId);
+          
+          if (!alreadyPaid) {
+            const newPayment: Payment = {
+              id: generateId(),
+              contactId: invoiceToSave.contactId,
+              invoiceId: currentId,
+              amount: total,
+              method: 'cash',
+              date: new Date().toISOString(),
+              note: `Automated payment for ${invoiceToSave.serialNumber}`
+            };
+            setPayments(prev => {
+              const updated = [newPayment, ...prev];
+              localStorage.setItem('gn_payments', JSON.stringify(updated));
+              return updated;
+            });
+          }
+        }
       }
       return;
     }
@@ -900,6 +925,38 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
         console.log("[Firestore] Updating existing invoice:", invoiceData.id);
         const docRef = doc(db, "invoices", invoiceData.id!);
         await updateDoc(docRef, cleanedData);
+
+        // Check if we need to add a payment record if status changed to paid
+        if (invoiceToSave.status === 'paid' && invoiceToSave.contactId) {
+           const paymentsRef = collection(db, "payments");
+           const q = query(paymentsRef, where("invoiceId", "==", invoiceData.id), where("userId", "==", user.uid));
+           const existingPayments = await getDocs(q);
+           
+           if (existingPayments.empty) {
+             console.log("[Firestore] Creating payment record for paid invoice");
+             await addDoc(paymentsRef, {
+               userId: user.uid,
+               contactId: invoiceToSave.contactId,
+               invoiceId: invoiceData.id,
+               amount: total,
+               method: 'cash',
+               date: serverTimestamp(),
+               note: `Automated payment for ${invoiceToSave.serialNumber}`
+             });
+
+             // Update contact Paid/Balance if we just created a payment
+             const contactRef = doc(db, "clients", invoiceToSave.contactId);
+             const contactSnap = await getDoc(contactRef);
+             if (contactSnap.exists()) {
+               const currentData = contactSnap.data();
+               await updateDoc(contactRef, {
+                  totalPaid: (currentData.totalPaid || 0) + total,
+                  totalBalance: Math.max(0, (currentData.totalBalance || 0) - total),
+                  updatedAt: serverTimestamp()
+               });
+             }
+           }
+        }
       } else {
         console.log("[Firestore] Adding new invoice");
         const docRef = await addDoc(collection(db, "invoices"), cleanedData);
@@ -920,12 +977,23 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
             
             if (invoiceToSave.status === 'paid') {
               updates.totalPaid = (currentData.totalPaid || 0) + totalAmount;
+              
+              // Create automated payment record
+              await addDoc(collection(db, "payments"), {
+                userId: user.uid,
+                contactId: invoiceToSave.contactId,
+                invoiceId: docRef.id,
+                amount: totalAmount,
+                method: 'cash',
+                date: serverTimestamp(),
+                note: `Automated payment for ${invoiceToSave.serialNumber}`
+              });
             } else {
               updates.totalBalance = (currentData.totalBalance || 0) + totalAmount;
             }
             
             await updateDoc(contactRef, updates);
-            console.log("[Firestore] Updated contact stats");
+            console.log("[Firestore] Updated contact stats and created payment record");
           }
         }
       }
@@ -939,6 +1007,89 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
       alert(lang === 'en' ? "Error saving to cloud. Please check your connection." : "خطأ في الحفظ السحابي. يرجى التحقق من الاتصال.");
     } finally {
       setIsSavingToFirestore(false);
+    }
+  };
+
+  const handleMarkAsPaid = async (invoice: InvoiceData) => {
+    if (invoice.status === 'paid') return;
+    
+    const updatedInvoice: InvoiceData = { ...invoice, status: 'paid', updatedAt: new Date().toISOString() as any };
+
+    if (!user) {
+      setSavedInvoices(prev => {
+        const updated = prev.map(inv => inv.id === invoice.id ? updatedInvoice : inv);
+        localStorage.setItem('gn_invoice_history', JSON.stringify(updated));
+        return updated;
+      });
+
+      if (invoice.contactId) {
+        setContacts(prev => {
+          const updated = prev.map(c => {
+            if (c.id === invoice.contactId) {
+              return {
+                ...c,
+                totalPaid: (c.totalPaid || 0) + invoice.totalAmount,
+                totalBalance: Math.max(0, (c.totalBalance || 0) - invoice.totalAmount)
+              };
+            }
+            return c;
+          });
+          localStorage.setItem('gn_contacts', JSON.stringify(updated));
+          return updated;
+        });
+
+        // Add to local payments
+        const newPayment: Payment = {
+          id: generateId(),
+          contactId: invoice.contactId,
+          invoiceId: invoice.id,
+          amount: invoice.totalAmount,
+          method: 'cash',
+          date: new Date().toISOString(),
+          note: `Automated payment for ${invoice.serialNumber}`
+        };
+        setPayments(prev => {
+          const updated = [newPayment, ...prev];
+          localStorage.setItem('gn_payments', JSON.stringify(updated));
+          return updated;
+        });
+      }
+      confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+      return;
+    }
+
+    try {
+      const invoiceRef = doc(db, "invoices", invoice.id!);
+      await updateDoc(invoiceRef, { status: 'paid', updatedAt: serverTimestamp() });
+      
+      if (invoice.contactId) {
+        // Add payment record
+        await addDoc(collection(db, "payments"), {
+          userId: user.uid,
+          contactId: invoice.contactId,
+          invoiceId: invoice.id,
+          amount: invoice.totalAmount,
+          method: 'cash',
+          date: serverTimestamp(),
+          note: `Automated payment for ${invoice.serialNumber}`
+        });
+
+        // Update contact stats
+        const contactRef = doc(db, "clients", invoice.contactId);
+        const contactSnap = await getDoc(contactRef);
+        if (contactSnap.exists()) {
+          const currentData = contactSnap.data();
+          await updateDoc(contactRef, {
+            totalPaid: (currentData.totalPaid || 0) + invoice.totalAmount,
+            totalBalance: Math.max(0, (currentData.totalBalance || 0) - invoice.totalAmount),
+            updatedAt: serverTimestamp()
+          });
+        }
+      }
+      confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+    } catch (err) {
+      console.error("Error marking as paid:", err);
+      alert(lang === 'en' ? "Failed to update invoice status." : "فشل في تحديث حالة الفاتورة.");
     }
   };
 
@@ -1048,8 +1199,69 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     }
   };
 
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string, type: 'payment' | 'expense' } | null>(null);
+
+  const handleDeletePayment = async (paymentId: string) => {
+    console.log("[Payments] Attempting to delete:", paymentId);
+    
+    const paymentToDelete = payments.find(p => p.id === paymentId);
+    if (!paymentToDelete) {
+      console.warn("[Payments] Payment not found in state:", paymentId);
+      return;
+    }
+
+    // Optimistic update
+    setPayments(prev => prev.filter(p => p.id !== paymentId));
+
+    if (!user) {
+      console.log("[Payments] Deleting local payment");
+      localStorage.setItem('gn_payments', JSON.stringify(payments.filter(p => p.id !== paymentId)));
+
+      // Update contact balance locally
+      setContacts(prev => {
+        const updated = prev.map(c => {
+          if (c.id === paymentToDelete.contactId) {
+            return {
+              ...c,
+              totalPaid: (c.totalPaid || 0) - paymentToDelete.amount,
+              totalBalance: (c.totalBalance || 0) + paymentToDelete.amount
+            };
+          }
+          return c;
+        });
+        localStorage.setItem('gn_contacts', JSON.stringify(updated));
+        return updated;
+      });
+      return;
+    }
+
+    try {
+      console.log("[Payments] Deleting Firestore payment:", paymentId);
+      await deleteDoc(doc(db, "payments", paymentId));
+      
+      // Update contact balance
+      if (paymentToDelete.contactId) {
+        console.log("[Payments] Updating contact balance for:", paymentToDelete.contactId);
+        const contactRef = doc(db, "clients", paymentToDelete.contactId);
+        const contactSnap = await getDoc(contactRef);
+        if (contactSnap.exists()) {
+          const currentData = contactSnap.data();
+          await updateDoc(contactRef, {
+            totalPaid: Math.max(0, (currentData.totalPaid || 0) - paymentToDelete.amount),
+            totalBalance: (currentData.totalBalance || 0) + paymentToDelete.amount,
+            updatedAt: serverTimestamp()
+          });
+        }
+      }
+      console.log("[Payments] Delete sequence completed");
+    } catch (err) {
+      console.error("Error deleting payment:", err);
+      alert(lang === 'en' ? "Failed to delete payment." : "فشل في حذف الدفعة.");
+    }
+  };
+
   const handleAddPayment = async (data: any) => {
-    if (!data.contactId || data.amount <= 0) return;
+    if (!data.contactId || isNaN(data.amount) || data.amount <= 0) return;
 
     if (!user) {
       const payment: Payment = {
@@ -1114,7 +1326,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
   };
 
   const handleAddExpense = async (data: any) => {
-    if (data.amount <= 0) return;
+    if (isNaN(data.amount) || data.amount <= 0) return;
 
     if (!user) {
       const expense: Expense = {
@@ -1141,6 +1353,29 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
       await addDoc(collection(db, "expenses"), expense);
     } catch (error) {
       console.error("Error adding expense:", error);
+    }
+  };
+
+  const handleDeleteExpense = async (expenseId: string) => {
+    console.log("[Expenses] Attempting to delete:", expenseId);
+    
+    // Optimistic update
+    setExpenses(prev => prev.filter(e => e.id !== expenseId));
+
+    if (!user) {
+      console.log("[Expenses] Deleting local expense");
+      localStorage.setItem('gn_expenses', JSON.stringify(expenses.filter(e => e.id !== expenseId)));
+      return;
+    }
+
+    try {
+      console.log("[Expenses] Deleting Firestore document:", expenseId);
+      await deleteDoc(doc(db, "expenses", expenseId));
+      console.log("[Expenses] Delete successful");
+    } catch (err) {
+      console.error("Error deleting expense:", err);
+      // Revert optimistic update if needed, but for simplicity we'll just alert
+      alert(lang === 'en' ? "Failed to delete expense." : "فشل في حذف المصروف.");
     }
   };
 
@@ -1586,6 +1821,14 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                     </div>
                     <div className="flex items-center gap-6">
                       <div className="hidden group-hover:flex items-center gap-2">
+                        {invoice.status !== 'paid' && (
+                          <button 
+                            onClick={() => handleMarkAsPaid(invoice)} 
+                            className="px-3 py-1 bg-emerald-100 text-emerald-600 rounded-lg text-[10px] font-black uppercase hover:bg-emerald-200 transition-colors"
+                          >
+                            {lang === 'en' ? 'Mark Paid' : 'تم الدفع'}
+                          </button>
+                        )}
                         <button onClick={() => handleEditInvoice(invoice)} className="p-2 hover:bg-blue-100 dark:hover:bg-blue-500/20 text-blue-600 rounded-lg transition-colors" title={lang === 'en' ? 'Edit' : 'تعديل'}>
                           <Edit size={16} />
                         </button>
@@ -1988,14 +2231,15 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
         </Button>
       </div>
 
-      <div className="bg-white dark:bg-white/5 border border-[#1A1A1A]/5 dark:border-white/10 rounded-[32px] overflow-hidden">
-        <table className="w-full text-left">
+      <div className="bg-white dark:bg-white/5 border border-[#1A1A1A]/5 dark:border-white/10 rounded-[32px] overflow-x-auto">
+        <table className="w-full text-left min-w-[600px]">
           <thead>
             <tr className="border-b border-[#1A1A1A]/5 dark:border-white/5">
               <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-[#999999]">{lang === 'en' ? 'Date' : 'التاريخ'}</th>
               <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-[#999999]">{lang === 'en' ? 'Client' : 'العميل'}</th>
               <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-[#999999]">{lang === 'en' ? 'Method' : 'الطريقة'}</th>
               <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-[#999999] text-right">{lang === 'en' ? 'Amount' : 'المبلغ'}</th>
+              <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-[#999999] text-center">{lang === 'en' ? 'Actions' : 'إجراءات'}</th>
             </tr>
           </thead>
           <tbody>
@@ -2009,6 +2253,19 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                   <td className="px-6 py-4 font-bold text-sm">{contact?.name || 'Unknown'}</td>
                   <td className="px-6 py-4 font-bold text-xs uppercase tracking-widest text-blue-600">{p.method}</td>
                   <td className="px-6 py-4 font-black text-emerald-500 text-right">{t.currencySymbol}{p.amount.toLocaleString()}</td>
+                  <td className="px-6 py-4 text-center">
+                    <Button 
+                      variant="danger" 
+                      size="icon" 
+                      onClick={(evt) => {
+                        evt.stopPropagation();
+                        setDeleteConfirm({ id: p.id, type: 'payment' });
+                      }} 
+                      className="h-10 w-10"
+                    >
+                       <Trash2 size={20} />
+                    </Button>
+                  </td>
                 </tr>
               );
             })}
@@ -2031,16 +2288,30 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
       </div>
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {expenses.map(e => (
-          <div key={e.id} className="bg-white dark:bg-white/5 border-2 border-[#1A1A1A]/5 dark:border-white/10 p-6 rounded-3xl relative">
+        {expenses.map(exp => (
+          <div key={exp.id} className="bg-white dark:bg-white/5 border-2 border-[#1A1A1A]/5 dark:border-white/10 p-6 rounded-3xl relative">
             <div className="flex items-center justify-between mb-4">
-              <span className="text-[10px] font-black uppercase tracking-widest bg-red-500/10 text-red-500 px-3 py-1 rounded-full">{e.category}</span>
-              <span className="text-xs font-bold text-[#999999]">
-                {e.date?.toDate ? e.date.toDate().toLocaleDateString() : new Date(e.date).toLocaleDateString()}
-              </span>
+              <span className="text-[10px] font-black uppercase tracking-widest bg-red-500/10 text-red-500 px-3 py-1 rounded-full">{exp.category}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-[#999999]">
+                  {exp.date?.toDate ? exp.date.toDate().toLocaleDateString() : new Date(exp.date).toLocaleDateString()}
+                </span>
+                <Button 
+                  variant="danger" 
+                  size="icon" 
+                  onClick={(evt) => {
+                    evt.stopPropagation();
+                    console.log("[UI] Delete button clicked for:", exp.id);
+                    setDeleteConfirm({ id: exp.id, type: 'expense' });
+                  }} 
+                  className="h-10 w-10 shadow-none border-none"
+                >
+                  <Trash2 size={20} />
+                </Button>
+              </div>
             </div>
-            <h4 className="font-bold text-lg mb-1">{e.description}</h4>
-            <p className="text-2xl font-black">{t.currencySymbol}{e.amount.toLocaleString()}</p>
+            <h4 className="font-bold text-lg mb-1">{exp.description}</h4>
+            <p className="text-2xl font-black">{t.currencySymbol}{exp.amount.toLocaleString()}</p>
           </div>
         ))}
       </div>
@@ -2152,7 +2423,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
               <Label>{t.businessActivity}</Label>
               <select
                 value={localInfo.activityIndex}
-                onChange={(e) => setLocalInfo(prev => ({ ...prev, activityIndex: parseInt(e.target.value) }))}
+                onChange={(e) => setLocalInfo(prev => ({ ...prev, activityIndex: parseInt(e.target.value) || 0 }))}
                 className="flex h-11 w-full rounded-lg border border-[#E5E5E5] bg-white dark:bg-[#121212] dark:border-[#333333] dark:text-white px-3 py-2 text-sm focus:outline-none"
               >
                 {t.activities.map((activity, idx) => (
@@ -2484,7 +2755,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                         <Label>{t.businessActivity}</Label>
                         <select
                           value={invoiceData.activityIndex}
-                          onChange={(e) => setInvoiceData(prev => ({ ...prev, activityIndex: parseInt(e.target.value) }))}
+                          onChange={(e) => setInvoiceData(prev => ({ ...prev, activityIndex: parseInt(e.target.value) || 0 }))}
                           className="flex h-11 w-full rounded-lg border border-[#E5E5E5] bg-white dark:bg-[#121212] dark:border-[#333333] dark:text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A1A1A]/5 focus:border-[#1A1A1A] transition-all"
                         >
                           {t.activities.map((activity, idx) => (
@@ -3026,6 +3297,16 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
+                          {inv.status !== 'paid' && (
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              onClick={() => handleMarkAsPaid(inv)}
+                              className="bg-emerald-50 text-emerald-600 border-emerald-100 hover:bg-emerald-100 font-bold"
+                            >
+                              {lang === 'en' ? 'Mark Paid' : 'تم الدفع'}
+                            </Button>
+                          )}
                           <Button variant="outline" size="sm" onClick={() => handleLoadInvoice(inv)}>
                             {t.edit}
                           </Button>
@@ -3217,7 +3498,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                      <Input 
                        type="number"
                        value={newPaymentData.amount}
-                       onChange={e => setNewPaymentData(prev => ({ ...prev, amount: parseFloat(e.target.value) }))}
+                       onChange={e => setNewPaymentData(prev => ({ ...prev, amount: parseFloat(e.target.value) || 0 }))}
                        className="h-12 bg-slate-50 dark:bg-white/5 border-none font-bold"
                      />
                    </div>
@@ -3277,7 +3558,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                      <Input 
                        type="number"
                        value={newExpenseData.amount}
-                       onChange={e => setNewExpenseData(prev => ({ ...prev, amount: parseFloat(e.target.value) }))}
+                       onChange={e => setNewExpenseData(prev => ({ ...prev, amount: parseFloat(e.target.value) || 0 }))}
                        className="h-12 bg-slate-50 dark:bg-white/5 border-none font-bold"
                      />
                    </div>
@@ -3308,6 +3589,59 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                    {lang === 'en' ? 'Save Expense' : 'حفظ المصروف'}
                  </Button>
                </div>
+            </motion.div>
+          </div>
+        )}
+
+        {deleteConfirm && (
+          <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }} 
+              className="absolute inset-0 bg-black/60 backdrop-blur-md" 
+              onClick={() => setDeleteConfirm(null)} 
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0, y: 20 }} 
+              animate={{ scale: 1, opacity: 1, y: 0 }} 
+              exit={{ scale: 0.9, opacity: 0, y: 20 }} 
+              className="relative bg-white dark:bg-slate-900 w-full max-w-sm rounded-[40px] p-8 shadow-2xl space-y-6 border border-slate-100 dark:border-white/5"
+            >
+              <div className="text-center space-y-4">
+                <div className="w-20 h-20 bg-red-50 dark:bg-red-500/10 text-red-600 rounded-full flex items-center justify-center mx-auto ring-8 ring-red-50/50 dark:ring-red-500/5">
+                  <Trash2 size={40} />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-black mb-2">{lang === 'ar' ? 'تأكيد الحذف' : 'Confirm Delete'}</h3>
+                  <p className="text-[#666666] dark:text-[#94A3B8] font-medium px-4">
+                    {lang === 'ar' ? 'هل أنت متأكد من حذف هذا السجل؟ لا يمكن التراجع عن هذا الإجراء.' : 'Are you sure you want to delete this record? This action cannot be undone.'}
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-col gap-3 pt-2">
+                <Button 
+                  variant="danger" 
+                  onClick={() => {
+                    if (deleteConfirm.type === 'payment') {
+                      handleDeletePayment(deleteConfirm.id);
+                    } else {
+                      handleDeleteExpense(deleteConfirm.id);
+                    }
+                    setDeleteConfirm(null);
+                  }} 
+                  className="w-full py-4 text-lg bg-red-600 hover:bg-red-700 text-white shadow-xl shadow-red-500/30"
+                >
+                  {lang === 'ar' ? 'حذف السجل' : 'Delete Record'}
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  onClick={() => setDeleteConfirm(null)} 
+                  className="w-full py-4 text-slate-400 font-bold"
+                >
+                  {lang === 'ar' ? 'تراجع' : 'Cancel'}
+                </Button>
+              </div>
             </motion.div>
           </div>
         )}
