@@ -12,6 +12,7 @@ import { jsPDF } from 'jspdf';
 import { db, auth, googleProvider } from './lib/firebase';
 import { 
   onAuthStateChanged, 
+  signInWithPopup,
   signInWithRedirect, 
   getRedirectResult,
   signOut, 
@@ -619,15 +620,29 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
   const handleLogin = async () => {
     setIsLoggingIn(true);
     try {
-      await signInWithRedirect(auth, googleProvider);
+      // Try popup first
+      await signInWithPopup(auth, googleProvider);
     } catch (error: any) {
-      console.error("Login error:", error);
-      if (error.code === 'auth/unauthorized-domain') {
+      console.error("Popup login error:", error);
+      
+      // Fallback to redirect if blocked
+      if (error.code === 'auth/popup-blocked') {
+        try {
+          await signInWithRedirect(auth, googleProvider);
+        } catch (redirectErr: any) {
+          console.error("Redirect login error:", redirectErr);
+          alert(lang === 'ar' ? 'فشل تسجيل الدخول: ' + redirectErr.message : 'Login failed: ' + redirectErr.message);
+          setIsLoggingIn(false);
+        }
+      } else if (error.code === 'auth/unauthorized-domain') {
         alert(lang === 'ar' ? 'هذا النطاق غير مصرح به في Firebase Console.' : 'This domain is not authorized in Firebase Console.');
+        setIsLoggingIn(false);
+      } else if (error.code === 'auth/popup-closed-by-user') {
+        setIsLoggingIn(false);
       } else {
         alert(lang === 'ar' ? 'فشل تسجيل الدخول: ' + error.message : 'Login failed: ' + error.message);
+        setIsLoggingIn(false);
       }
-      setIsLoggingIn(false);
     }
   };
 

@@ -16,6 +16,7 @@ import {
 import { useNavigate, Link } from 'react-router-dom';
 import { auth, googleProvider } from '../lib/firebase';
 import { 
+  signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
   onAuthStateChanged, 
@@ -147,12 +148,25 @@ const LoginPage: React.FC<LoginPageProps> = ({ lang, isDarkMode }) => {
     setIsLoggingIn(true);
     setErrorMessage(null);
     try {
-      await signInWithRedirect(auth, googleProvider);
-      // The page will redirect away here
+      // Try popup first as requested by user
+      await signInWithPopup(auth, googleProvider);
     } catch (error: any) {
       console.error("Login error:", error);
-      setIsLoggingIn(false);
-      setErrorMessage(error.message);
+      
+      // If popup is blocked, fallback to redirect
+      if (error.code === 'auth/popup-blocked') {
+        try {
+          await signInWithRedirect(auth, googleProvider);
+        } catch (redirectErr: any) {
+          setIsLoggingIn(false);
+          setErrorMessage(redirectErr.message);
+        }
+      } else if (error.code === 'auth/popup-closed-by-user') {
+        setIsLoggingIn(false);
+      } else {
+        setIsLoggingIn(false);
+        setErrorMessage(error.message);
+      }
     }
   };
 
