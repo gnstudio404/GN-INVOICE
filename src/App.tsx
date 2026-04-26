@@ -550,52 +550,64 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     checkRedirect();
 
     console.log("[Auth] Setting up listener...");
-    const unsubAuth = onAuthStateChanged(auth, async (currentUser) => {
+    const unsubAuth = onAuthStateChanged(auth, (currentUser) => {
       console.log("[Auth] State changed:", currentUser ? `User: ${currentUser.email} (${currentUser.uid})` : "No user");
       setUser(currentUser);
-      
-      if (currentUser) {
-        // Check/Create Profile
-        const userRef = doc(db, "users_profiles", currentUser.uid);
-        try {
-          const userSnap = await getDoc(userRef);
-          
-          if (userSnap.exists()) {
-            const data = userSnap.data() as UserProfile;
-            setIsApproved(data.isApproved);
-            setIsSuperAdmin(currentUser.email === ADMIN_EMAIL);
-            
-            // Update last login
-            await updateDoc(userRef, { lastLogin: serverTimestamp() });
-          } else {
-            const isDefaultApproved = currentUser.email === ADMIN_EMAIL;
-            const newProfile: UserProfile = {
-              uid: currentUser.uid,
-              email: currentUser.email || '',
-              displayName: currentUser.displayName || 'User',
-              photoURL: currentUser.photoURL || '',
-              isApproved: isDefaultApproved,
-              createdAt: serverTimestamp(),
-              lastLogin: serverTimestamp()
-            };
-            await setDoc(userRef, newProfile);
-            setIsApproved(isDefaultApproved);
-            setIsSuperAdmin(currentUser.email === ADMIN_EMAIL);
-          }
-        } catch (err) {
-          console.error("Error fetching profile:", err);
-          setIsApproved(false);
-        }
-      } else {
+      if (!currentUser) {
         setIsApproved(null);
         setIsSuperAdmin(false);
+        setAuthLoading(false);
       }
-      
-      setAuthLoading(false);
     });
 
     return () => unsubAuth();
   }, []);
+
+  // Listen to user profile real-time
+  useEffect(() => {
+    if (!user) return;
+
+    const userRef = doc(db, "users_profiles", user.uid);
+    
+    // First, ensure profile exists
+    const initProfile = async () => {
+      try {
+        const userSnap = await getDoc(userRef);
+        if (!userSnap.exists()) {
+          const isDefaultApproved = user.email === ADMIN_EMAIL;
+          await setDoc(userRef, {
+            uid: user.uid,
+            email: user.email || '',
+            displayName: user.displayName || 'User',
+            photoURL: user.photoURL || '',
+            isApproved: isDefaultApproved,
+            createdAt: serverTimestamp(),
+            lastLogin: serverTimestamp()
+          });
+        } else {
+          await updateDoc(userRef, { lastLogin: serverTimestamp() });
+        }
+      } catch (err) {
+        console.error("Error initializing profile:", err);
+      }
+    };
+
+    initProfile();
+
+    const unsubProfile = onSnapshot(userRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data() as UserProfile;
+        setIsApproved(data.isApproved);
+        setIsSuperAdmin(user.email === ADMIN_EMAIL);
+      }
+      setAuthLoading(false);
+    }, (err) => {
+      console.error("Profile listener error:", err);
+      setAuthLoading(false);
+    });
+
+    return () => unsubProfile();
+  }, [user]);
 
   useEffect(() => {
     if (authLoading) return;
