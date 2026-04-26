@@ -2123,27 +2123,34 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
 
       {/* Header */}
       <header className="no-print sticky top-0 z-50 w-full border-b border-[#F0F0F0] dark:border-white/5 bg-white/80 dark:bg-[#060B16]/80 backdrop-blur-md">
-        <div className="container mx-auto flex h-16 items-center justify-between px-4 md:px-8">
-          <div className="flex items-center gap-2.5">
+        <div className="container mx-auto flex h-16 items-center px-4 md:px-8">
+          <div className="flex flex-1 items-center justify-start gap-2.5">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#1A1A1A] dark:bg-[#E2E8F0] text-white dark:text-[#060B16] shadow-lg shadow-[#1A1A1A]/10">
               <FileText size={24} strokeWidth={2.5} />
             </div>
             <span className="text-xl font-bold tracking-tight text-[#1A1A1A] dark:text-[#E2E8F0] hidden sm:inline-block">{t.title}</span>
           </div>
 
-          <nav className="flex items-center gap-1 bg-slate-100/50 dark:bg-white/5 p-1 rounded-xl">
+          <nav className="hidden lg:flex items-center gap-1 bg-slate-100/50 dark:bg-white/5 p-1 rounded-xl">
             <TabButton icon={<LayoutDashboard size={18} />} active={activeTab === 'dashboard'} onClick={() => { setActiveTab('dashboard'); setIsPreviewMode(false); }}>{t.dashboard}</TabButton>
-            <TabButton icon={<Users size={18} />} active={activeTab === 'contacts'} onClick={() => { setActiveTab('contacts'); setIsPreviewMode(false); }}>{t.clients}</TabButton>
-            <TabButton icon={<Wallet size={18} />} active={activeTab === 'payments'} onClick={() => { setActiveTab('payments'); setIsPreviewMode(false); }}>{lang === 'en' ? 'Payments' : 'المدفوعات'}</TabButton>
-            <TabButton icon={<ArrowDownLeft size={18} />} active={activeTab === 'expenses'} onClick={() => { setActiveTab('expenses'); setIsPreviewMode(false); }}>{lang === 'en' ? 'Expenses' : 'المصاريف'}</TabButton>
             <TabButton icon={<Plus size={18} />} active={activeTab === 'invoices'} onClick={() => {
               setActiveTab('invoices');
               setIsPreviewMode(false);
             }}>{t.invoice}</TabButton>
+            <TabButton icon={<Users size={18} />} active={activeTab === 'contacts'} onClick={() => { setActiveTab('contacts'); setIsPreviewMode(false); }}>{t.clients}</TabButton>
+            <TabButton icon={<Wallet size={18} />} active={activeTab === 'payments'} onClick={() => { setActiveTab('payments'); setIsPreviewMode(false); }}>{lang === 'en' ? 'Payments' : 'المدفوعات'}</TabButton>
+            <TabButton icon={<ArrowDownLeft size={18} />} active={activeTab === 'expenses'} onClick={() => { setActiveTab('expenses'); setIsPreviewMode(false); }}>{lang === 'en' ? 'Expenses' : 'المصاريف'}</TabButton>
             <TabButton icon={<Settings size={18} />} active={activeTab === 'profile'} onClick={() => { setActiveTab('profile'); setIsPreviewMode(false); }}>{lang === 'en' ? 'My Data' : 'بياناتي'}</TabButton>
           </nav>
+
+          {/* Centered for mobile/smaller screens fallback or keep same nav but hidden logic */}
+          <nav className="flex lg:hidden items-center gap-1 bg-slate-100/50 dark:bg-white/5 p-1 rounded-xl mx-auto">
+             <TabButton icon={<LayoutDashboard size={18} />} active={activeTab === 'dashboard'} onClick={() => { setActiveTab('dashboard'); setIsPreviewMode(false); }} />
+             <TabButton icon={<Plus size={18} />} active={activeTab === 'invoices'} onClick={() => { setActiveTab('invoices'); setIsPreviewMode(false); }} />
+             <TabButton icon={<Settings size={18} />} active={activeTab === 'profile'} onClick={() => { setActiveTab('profile'); setIsPreviewMode(false); }} />
+          </nav>
           
-          <div className="flex items-center gap-2 sm:gap-4">
+          <div className="flex flex-1 items-center justify-end gap-2 sm:gap-4">
             <div className="flex items-center gap-1">
               <Button variant="ghost" size="icon" onClick={() => setShowDebug(!showDebug)} className="h-10 w-10 rounded-full text-blue-500">
                 <Settings size={22} />
