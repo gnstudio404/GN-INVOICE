@@ -144,7 +144,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ lang, setLang, isDarkMode, se
                 <Languages className="w-5 h-5" />
                 <span className="text-xs font-bold uppercase hidden sm:inline">{lang === 'en' ? 'AR' : 'EN'}</span>
               </button>
-              <Link to="/invoice">
+              <Link to="/login">
                 <button className="px-5 py-2 bg-[#0B1220] dark:bg-blue-600 text-white rounded-full font-medium hover:opacity-90 transition-opacity">
                   {t.navStart}
                 </button>
@@ -173,7 +173,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ lang, setLang, isDarkMode, se
               </p>
               
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                <Link to="/invoice">
+                <Link to="/login">
                   <button className="w-full sm:w-auto px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-full font-bold text-lg shadow-lg shadow-blue-500/20 transition-all hover:scale-105 flex items-center justify-center gap-2">
                     {t.ctaPrimary}
                     <ArrowRight className={cn("w-5 h-5", lang === 'ar' && "rotate-180")} />
