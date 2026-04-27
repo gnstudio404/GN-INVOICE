@@ -464,6 +464,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
   const [products, setProducts] = useState<Product[]>([]);
   const [businessInfo, setBusinessInfo] = useState<BusinessInfo | null>(null);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'invoices' | 'contacts' | 'payments' | 'expenses' | 'profile' | 'subscribers' | 'history'>(() => (localStorage.getItem('gn_active_tab') as any) || 'dashboard');
+  const [invoiceTabMode, setInvoiceTabMode] = useState<'list' | 'editor'>('list');
   const [showSaveSuccess, setShowSaveSuccess] = useState(false);
   
   const contactsWithAggregatedDebt = useMemo(() => {
@@ -1860,6 +1861,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     setInvoiceData(invoice);
     setSaveNameInput(invoice.invoiceTitle || '');
     setActiveTab('invoices');
+    setInvoiceTabMode('editor');
     setIsPreviewMode(false);
     setShowHistory(false);
   };
@@ -1867,6 +1869,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
   const handleViewInvoice = (invoice: InvoiceData) => {
     setInvoiceData(invoice);
     setActiveTab('invoices');
+    setInvoiceTabMode('editor');
     setIsPreviewMode(true);
     setShowHistory(false);
   };
@@ -1914,6 +1917,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     setSaveNameInput('');
     setIsPreviewMode(false);
     setActiveTab('invoices');
+    setInvoiceTabMode('editor');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -1947,6 +1951,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     setSaveNameInput('');
     setIsPreviewMode(false);
     setActiveTab('invoices');
+    setInvoiceTabMode('editor');
     setSelectedClientId(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -2929,6 +2934,24 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
           console.error("Save profile error:", err);
         }
       } else {
+        // Handle guest mode prefix update
+        if (localInfo.invoicePrefix && businessInfo?.invoicePrefix && localInfo.invoicePrefix !== businessInfo.invoicePrefix) {
+          const oldPrefix = businessInfo.invoicePrefix;
+          const newPrefix = localInfo.invoicePrefix;
+          
+          const updatedLocalInvoices = savedInvoices.map(inv => {
+            if (inv.serialNumber && inv.serialNumber.startsWith(oldPrefix)) {
+              return {
+                ...inv,
+                serialNumber: inv.serialNumber.replace(oldPrefix, newPrefix)
+              };
+            }
+            return inv;
+          });
+          setSavedInvoices(updatedLocalInvoices);
+          localStorage.setItem('gn_invoice_history', JSON.stringify(updatedLocalInvoices));
+        }
+
         localStorage.setItem('gn_business_info', JSON.stringify(localInfo));
         setBusinessInfo(localInfo);
         setInvoiceData(prev => ({
@@ -2937,7 +2960,8 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
           phoneNumber: localInfo.phone || prev.phoneNumber,
           logo: localInfo.logo || prev.logo,
           activityIndex: localInfo.activityIndex ?? prev.activityIndex,
-          customActivity: localInfo.customActivity || prev.customActivity
+          customActivity: localInfo.customActivity || prev.customActivity,
+          serialNumber: prev.id ? prev.serialNumber : `${localInfo.invoicePrefix || 'INV'}-${String((savedInvoices.length + 1)).padStart(4, '0')}`
         }));
         alert(lang === 'ar' ? 'تم الحفظ محلياً' : 'Saved locally');
       }
@@ -3132,6 +3156,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
         onTabChange={(tab) => {
           setActiveTab(tab as any);
           setIsPreviewMode(false);
+          if (tab === 'invoices') setInvoiceTabMode('list');
         }}
         onAddClient={() => setShowAddContact(true)}
         lang={lang}
@@ -3159,6 +3184,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
         {/* Top bar Header */}
         <TopNav 
           title={
+            activeTab === 'invoices' ? (invoiceTabMode === 'editor' ? (lang === 'ar' ? 'محرر الفواتير' : 'Invoice Editor') : (lang === 'ar' ? 'سجل الفواتير' : 'Invoices Log')) :
             activeTab === 'contacts' ? (lang === 'ar' ? 'إدارة العملاء' : 'Clients Management') : 
             activeTab === 'subscribers' ? (lang === 'ar' ? 'إدارة المشتركين' : 'Subscribers') :
             activeTab === 'payments' ? (lang === 'ar' ? 'المدفوعات' : 'Payments') :
@@ -3236,7 +3262,28 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
               )}
             </motion.div>
           ) : activeTab === 'invoices' ? (
-            !isPreviewMode ? (
+            invoiceTabMode === 'list' ? (
+              <motion.div
+                key="invoice-history-tab"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="space-y-8"
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-3xl font-black text-[#1A1A1A] dark:text-[#E2E8F0]">{t.history}</h2>
+                    <p className="text-[#666666] dark:text-[#94A3B8]">{lang === 'en' ? 'Manage and track all your recorded business transactions' : 'إدارة وتتبع جميع معاملاتك التجارية المسجلة'}</p>
+                  </div>
+                  <Button onClick={handleNewInvoice} className="gap-2 h-12 px-6 rounded-2xl bg-[#1A1A1A] text-white hover:bg-black dark:bg-white dark:text-[#1A1A1A]">
+                    <Plus size={18} /> {lang === 'en' ? 'New Invoice' : 'فاتورة جديدة'}
+                  </Button>
+                </div>
+                <div className="bg-white dark:bg-[#0F172A] border-2 border-[#1A1A1A] dark:border-white/10 rounded-[40px] p-8 shadow-[8px_8px_0px_0px_rgba(26,26,26,1)] dark:shadow-none">
+                  <HistoryContent />
+                </div>
+              </motion.div>
+            ) : !isPreviewMode ? (
             <motion.div
               key="form"
               initial={{ opacity: 0, y: 20 }}
@@ -3953,8 +4000,6 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
             </div>
           </motion.div>
           )
-          ) : activeTab === 'contacts' ? (
-            <ContactsView />
           ) : activeTab === 'payments' ? (
             <PaymentsView />
           ) : activeTab === 'expenses' ? (
@@ -3963,21 +4008,6 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
             <SubscribersView />
           ) : activeTab === 'profile' ? (
             <ProfileView />
-          ) : activeTab === 'history' ? (
-            <div className="space-y-8">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-3xl font-black">{t.history}</h2>
-                  <p className="text-[#666666] dark:text-[#94A3B8]">{lang === 'en' ? 'Manage and track all your recorded business transactions' : 'إدارة وتتبع جميع معاملاتك التجارية المسجلة'}</p>
-                </div>
-                <Button onClick={handleNewInvoice} className="gap-2">
-                  <Plus size={18} /> {lang === 'en' ? 'New Invoice' : 'فاتورة جديدة'}
-                </Button>
-              </div>
-              <div className="bg-white dark:bg-[#0F172A] border-2 border-[#1A1A1A] dark:border-white/10 rounded-[40px] p-8 shadow-[8px_8px_0px_0px_rgba(26,26,26,1)] dark:shadow-none">
-                <HistoryContent />
-              </div>
-            </div>
           ) : (
             <DashboardView />
           )}
