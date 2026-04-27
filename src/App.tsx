@@ -2853,6 +2853,12 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     const [isSaving, setIsSaving] = useState(false);
     const profileFileRef = useRef<HTMLInputElement>(null);
 
+    useEffect(() => {
+      if (businessInfo) {
+        setLocalInfo(businessInfo);
+      }
+    }, [businessInfo]);
+
     const handleSave = async () => {
       setIsSaving(true);
       if (user) {
@@ -2884,6 +2890,30 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
             updatedAt: serverTimestamp()
           });
           
+          // 3. If prefix changed, update existing invoices
+          if (localInfo.invoicePrefix && businessInfo?.invoicePrefix && localInfo.invoicePrefix !== businessInfo.invoicePrefix) {
+            const oldPrefix = businessInfo.invoicePrefix;
+            const newPrefix = localInfo.invoicePrefix;
+            
+            // Update local state first for immediate UI response
+            const updatedLocalInvoices = savedInvoices.map(inv => {
+              if (inv.serialNumber && inv.serialNumber.startsWith(oldPrefix)) {
+                return {
+                  ...inv,
+                  serialNumber: inv.serialNumber.replace(oldPrefix, newPrefix)
+                };
+              }
+              return inv;
+            });
+            setSavedInvoices(updatedLocalInvoices);
+
+            // Update in Firestore
+            const invoicesToUpdate = updatedLocalInvoices.filter((inv, idx) => inv.serialNumber !== savedInvoices[idx].serialNumber);
+            for (const inv of invoicesToUpdate) {
+              await updateDoc(doc(db, "invoices", inv.id!), { serialNumber: inv.serialNumber });
+            }
+          }
+
           setBusinessInfo({ ...localInfo, id: user.uid });
           setInvoiceData(prev => ({
             ...prev,
