@@ -9,6 +9,7 @@ import LandingPage from './components/LandingPage';
 import LoginPage from './components/LoginPage';
 import * as htmlToImage from 'html-to-image';
 import { jsPDF } from 'jspdf';
+import * as XLSX from 'xlsx';
 import { db, auth, googleProvider } from './lib/firebase';
 import { 
   onAuthStateChanged, 
@@ -47,6 +48,7 @@ import {
   Briefcase,
   Image as ImageIcon,
   ArrowLeft,
+  FileDown,
   Sparkles,
   Moon,
   Sun,
@@ -73,7 +75,6 @@ import {
   TrendingUp,
   UserMinus,
   Clock,
-  FileDown,
   ChartPie,
   LogOut
 } from 'lucide-react';
@@ -1120,27 +1121,30 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
         const isPaid = invoiceToSave.status === 'paid';
         const isPartial = invoiceToSave.status === 'partially-paid';
         const currentPaid = isPaid ? total : (isPartial ? (invoiceToSave.paidAmount || 0) : 0);
+        const oldPaid = oldInvoice ? (oldInvoice.status === 'paid' ? oldInvoice.totalAmount : (oldInvoice.status === 'partially-paid' ? (oldInvoice.paidAmount || 0) : 0)) : 0;
         
-        let paidDiff = currentPaid;
-        if (oldInvoice) {
-          const oldPaid = oldInvoice.status === 'paid' ? oldInvoice.totalAmount : (oldInvoice.status === 'partially-paid' ? (oldInvoice.paidAmount || 0) : 0);
-          paidDiff = currentPaid - oldPaid;
-        }
-
-        if (paidDiff > 0) {
+        if (oldPaid !== currentPaid) {
           setPayments(prev => {
-            const newPayment: Payment = {
-              id: generateId(),
-              contactId: invoiceToSave.contactId!,
-              invoiceId: currentId,
-              amount: paidDiff,
-              method: 'cash',
-              date: new Date().toISOString(),
-              note: `Automated payment for ${invoiceToSave.serialNumber}${isPartial ? ' (Partial)' : (isPaid ? ' (Full)' : '')}`
-            };
-            const updated = [newPayment, ...prev];
-            localStorage.setItem('gn_payments', JSON.stringify(updated));
-            return updated;
+            // Filter out existing automated payments for this invoice
+            const filtered = prev.filter(p => p.invoiceId !== currentId || !p.note?.startsWith('Automated payment for'));
+            
+            if (currentPaid > 0) {
+              const newPayment: Payment = {
+                id: generateId(),
+                contactId: invoiceToSave.contactId!,
+                invoiceId: currentId,
+                amount: currentPaid,
+                method: 'cash',
+                date: new Date().toISOString(),
+                note: `Automated payment for ${invoiceToSave.serialNumber}${isPartial ? ' (Partial)' : (isPaid ? ' (Full)' : '')}`
+              };
+              const updated = [newPayment, ...filtered];
+              localStorage.setItem('gn_payments', JSON.stringify(updated));
+              return updated;
+            } else {
+              localStorage.setItem('gn_payments', JSON.stringify(filtered));
+              return filtered;
+            }
           });
         }
       }
@@ -1185,18 +1189,12 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
             const currentPaid = isPaid ? totalAmount : (isPartial ? (invoiceToSave.paidAmount || 0) : 0);
             const currentBalance = totalAmount - currentPaid;
 
-            let amountDiff = totalAmount;
-            let paidDiff = currentPaid;
-            let balanceDiff = currentBalance;
-
-            if (oldInvoice) {
-              const oldPaid = oldInvoice.status === 'paid' ? oldInvoice.totalAmount : (oldInvoice.status === 'partially-paid' ? (oldInvoice.paidAmount || 0) : 0);
-              const oldBalance = (oldInvoice.totalAmount || 0) - oldPaid;
-              
-              amountDiff = totalAmount - (oldInvoice.totalAmount || 0);
-              paidDiff = currentPaid - oldPaid;
-              balanceDiff = currentBalance - oldBalance;
-            }
+            const oldPaid = oldInvoice ? (oldInvoice.status === 'paid' ? (oldInvoice.totalAmount || 0) : (oldInvoice.status === 'partially-paid' ? (oldInvoice.paidAmount || 0) : 0)) : 0;
+            const oldBalance = oldInvoice ? (oldInvoice.totalAmount || 0) - oldPaid : 0;
+            
+            const amountDiff = totalAmount - (oldInvoice?.totalAmount || 0);
+            const paidDiff = currentPaid - oldPaid;
+            const balanceDiff = currentBalance - oldBalance;
 
             await updateDoc(contactRef, {
               totalInvoices: (currentData.totalInvoices || 0) + amountDiff,
@@ -1206,17 +1204,31 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
             });
 
             // Handle payment record for updates:
-            // Create a new payment record for the difference if more money was paid
-            if (paidDiff > 0) {
-              await addDoc(collection(db, "payments"), {
-                userId: user.uid,
-                contactId: invoiceToSave.contactId,
-                invoiceId: invoiceData.id,
-                amount: paidDiff,
-                method: 'cash',
-                date: serverTimestamp(),
-                note: `Automated payment for ${invoiceToSave.serialNumber}${isPartial ? ' (Partial)' : (isPaid ? ' (Full)' : '')}`
-              });
+            // Sync automated payments with the new invoice status/amount
+            if (oldPaid !== currentPaid) {
+              const paymentsQuery = query(
+                collection(db, "payments"), 
+                where("invoiceId", "==", invoiceData.id),
+                where("userId", "==", user.uid)
+              );
+              const paymentsSnap = await getDocs(paymentsQuery);
+              for (const pDoc of paymentsSnap.docs) {
+                if (pDoc.data().note?.startsWith('Automated payment for')) {
+                  await deleteDoc(pDoc.ref);
+                }
+              }
+
+              if (currentPaid > 0) {
+                await addDoc(collection(db, "payments"), {
+                  userId: user.uid,
+                  contactId: invoiceToSave.contactId,
+                  invoiceId: invoiceData.id,
+                  amount: currentPaid,
+                  method: 'cash',
+                  date: serverTimestamp(),
+                  note: `Automated payment for ${invoiceToSave.serialNumber}${isPartial ? ' (Partial)' : (isPaid ? ' (Full)' : '')}`
+                });
+              }
             }
           }
         }
@@ -1470,6 +1482,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     try {
       await deleteDoc(doc(db, "clients", id));
       if (selectedContactId === id) setSelectedContactId(null);
+      if (selectedClientId === id) setSelectedClientId(null);
     } catch (err) {
       console.error("Error deleting contact:", err);
       setLastFirebaseError(err instanceof Error ? err.message : String(err));
@@ -1914,6 +1927,92 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     }
   };
 
+  const handleExportContactStatement = (contactId: string) => {
+    const contact = contacts.find(c => c.id === contactId);
+    if (!contact) return;
+
+    // Filter invoices for this client
+    const contactInvoices = savedInvoices.filter(i => i.contactId === contactId);
+    
+    // Filter payments for this client
+    const contactPayments = processedPayments.filter(p => p.contactId === contactId);
+
+    // Combine into a statement list
+    const statementItems: any[] = [];
+
+    contactInvoices.forEach(inv => {
+      // Handle Firestore Timestamp or string or Date
+      const dateVal = inv.savedAt || inv.updatedAt;
+      const normalizedDate = dateVal?.toDate ? dateVal.toDate() : new Date(dateVal || Date.now());
+      
+      statementItems.push({
+        date: normalizedDate,
+        type: lang === 'en' ? 'Invoice' : 'فاتورة',
+        reference: inv.serialNumber || inv.id,
+        description: inv.invoiceTitle || (lang === 'en' ? 'Services/Products' : 'خدمات/منتجات'),
+        debit: Number(inv.totalAmount) || 0,
+        credit: 0
+      });
+    });
+
+    contactPayments.forEach(p => {
+      const dateVal = p.date;
+      const normalizedDate = dateVal?.toDate ? dateVal.toDate() : new Date(dateVal || Date.now());
+
+      statementItems.push({
+        date: normalizedDate,
+        type: lang === 'en' ? 'Payment' : 'دفعة',
+        reference: p.id?.toString().substring(0, 8),
+        description: p.note || (lang === 'en' ? 'Payment Received' : 'دفعة مستلمة'),
+        debit: 0,
+        credit: Number(p.amount) || 0
+      });
+    });
+
+    // Sort chronologically
+    statementItems.sort((a, b) => a.date.getTime() - b.date.getTime());
+
+    // Calculate balance
+    let balance = 0;
+    const excelRows = statementItems.map(item => {
+      balance += (item.debit - item.credit);
+      return {
+        [lang === 'en' ? 'Date' : 'التاريخ']: item.date.toLocaleDateString(lang === 'ar' ? 'ar-EG' : 'en-US'),
+        [lang === 'en' ? 'Type' : 'النوع']: item.type,
+        [lang === 'en' ? 'Reference' : 'المرجع']: item.reference,
+        [lang === 'en' ? 'Statement' : 'البيان']: item.description,
+        [lang === 'en' ? 'Debit (+)' : 'مدين (+)']: item.debit,
+        [lang === 'en' ? 'Credit (-)' : 'دائن (-)']: item.credit,
+        [lang === 'en' ? 'Balance' : 'الرصيد']: balance
+      };
+    });
+
+    try {
+      // Create workbook & worksheet
+      const ws = XLSX.utils.json_to_sheet(excelRows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, lang === 'en' ? "Statement" : "كشف حساب");
+
+      // Styling (columns width)
+      ws['!cols'] = [
+        { wch: 15 }, // Date
+        { wch: 10 }, // Type
+        { wch: 15 }, // Ref
+        { wch: 30 }, // Statement
+        { wch: 15 }, // Debit
+        { wch: 15 }, // Credit
+        { wch: 15 }, // Balance
+      ];
+
+      // Download
+      const fileName = `${lang === 'en' ? 'Statement' : 'كشف-حساب'}_${contact.name}_${new Date().toISOString().split('T')[0]}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+    } catch (error) {
+      console.error("Excel export error:", error);
+      alert(lang === 'en' ? 'Failed to export Excel file' : 'فشل تصدير ملف الإكسل');
+    }
+  };
+
   const handleLoadInvoice = (invoice: InvoiceData) => {
     setInvoiceData(invoice);
     setSaveNameInput(invoice.invoiceTitle || '');
@@ -2136,6 +2235,9 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                <div className="flex flex-wrap gap-4">
                  <Button onClick={() => handleCreateInvoiceForContact(selectedContact)} className="gap-2 bg-blue-600 hover:bg-blue-700 h-[unset] px-6 py-4 text-white font-bold rounded-2xl shadow-lg">
                    <Plus size={18} /> {t.newInvoice}
+                 </Button>
+                 <Button onClick={() => handleExportContactStatement(selectedContact.id!)} variant="outline" className="gap-2 h-[unset] px-6 py-4 font-bold rounded-2xl border-2 border-emerald-500 text-emerald-600 hover:bg-emerald-50">
+                   <FileDown size={18} /> {lang === 'en' ? 'Excel Statement' : 'تصدير كشف حساب'}
                  </Button>
                  <div className="bg-slate-50 dark:bg-white/5 p-4 px-6 rounded-2xl border border-slate-100 dark:border-white/5">
                    <p className="text-[10px] font-black uppercase text-[#999999] mb-1">{lang === 'en' ? 'Remaining Debt' : 'المديونية المتبقية'}</p>
@@ -3266,6 +3368,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                   onDeleteInvoice={confirmDelete}
                   onDownloadInvoice={handleDownloadHistoryInvoice}
                   onAddInvoice={handleCreateInvoiceForClient}
+                  onExport={handleExportContactStatement}
                   onMarkAsPaid={handleMarkAsPaid}
                   lang={lang}
                 />
@@ -3286,8 +3389,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                     setShowAddContact(true);
                   }}
                   onDeleteClient={(id: string) => {
-                    setDeletingId(id);
-                    setShowDeleteConfirm(true);
+                    setClientToDelete(id);
                   }}
                 />
               )}

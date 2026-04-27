@@ -61,6 +61,7 @@ interface ClientDetailPageProps {
   onDeleteInvoice: (id: string) => void;
   onDownloadInvoice: (invoice: Invoice) => void;
   onAddInvoice: (client: Client) => void;
+  onExport: (clientId: string) => void;
   onMarkAsPaid?: (invoice: Invoice) => void;
   lang?: 'ar' | 'en';
 }
@@ -75,6 +76,7 @@ const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
   onDeleteInvoice,
   onDownloadInvoice,
   onAddInvoice,
+  onExport,
   onMarkAsPaid,
   lang = 'ar'
 }) => {
@@ -129,7 +131,10 @@ const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
         </div>
 
         <div className="flex gap-3">
-          <button className="flex items-center gap-2 px-6 py-3 bg-white border border-slate-200 rounded-xl text-slate-600 hover:bg-slate-50 transition-all font-bold text-sm shadow-sm">
+          <button 
+            onClick={() => onExport(clientId)}
+            className="flex items-center gap-2 px-6 py-3 bg-white border border-slate-200 rounded-xl text-slate-600 hover:bg-slate-50 transition-all font-bold text-sm shadow-sm"
+          >
             <Download size={18} />
             <span>{isAr ? 'تصدير الكشف' : 'Export Statement'}</span>
           </button>
