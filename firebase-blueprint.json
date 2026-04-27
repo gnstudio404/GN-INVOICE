@@ -101,6 +101,7 @@
         "logo": { "type": "string" },
         "activityIndex": { "type": "number" },
         "customActivity": { "type": "string" },
+        "invoicePrefix": { "type": "string", "description": "Unique 6-letter prefix for invoice numbering" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userId"]

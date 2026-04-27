@@ -57,7 +57,8 @@ service cloud.firestore {
     function isValidBusinessInfo(data) {
       return data.userId == request.auth.uid &&
              (!('name' in data) || data.name is string) &&
-             (!('phone' in data) || data.phone is string);
+             (!('phone' in data) || data.phone is string) &&
+             (!('invoicePrefix' in data) || (data.invoicePrefix is string && data.invoicePrefix.size() <= 6 && data.invoicePrefix.matches('^[A-Z]*$')));
     }
 
     function isApproved() {
@@ -130,7 +131,7 @@ service cloud.firestore {
 
     match /businessInfo/{userId} {
       allow get: if canModifyData(userId);
-      allow list: if isApproved() && resource.data.userId == request.auth.uid;
+      allow list: if isApproved(); // Allow approved users to list for uniqueness check
       allow create: if canModifyData(userId) && isValidBusinessInfo(incoming());
       allow update: if canModifyData(userId) && isValidBusinessInfo(incoming());
       allow delete: if canModifyData(userId);

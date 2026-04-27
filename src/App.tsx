@@ -162,8 +162,6 @@ const translations = {
     reset: "Reset Form",
     resetConfirm: "Are you sure you want to reset the form?",
     support: "Support",
-  whatsapp: "WhatsApp",
-    telegram: "Telegram",
     allRightsReserved: "All rights reserved. Professional invoicing for the modern digital era.",
     currencySymbol: "$",
     login: "Login with Google",
@@ -265,8 +263,6 @@ const translations = {
     reset: "إعادة تعيين",
     resetConfirm: "هل أنت متأكد أنك تريد إعادة تعيين النموذج؟",
     support: "الدعم",
-  whatsapp: "واتساب",
-    telegram: "تلجرام",
     allRightsReserved: "جميع الحقوق محفوظة. فوترة احترافية للعصر الرقمي الحديث.",
     currencySymbol: "$",
     login: "تسجيل الدخول باستخدام جوجل",
@@ -330,8 +326,6 @@ interface InvoiceData {
   customActivity: string;
   logo: string | null;
   phoneNumber: string;
-  telegram?: string;
-  whatsapp?: string;
   items: InvoiceItem[];
   totalAmount: number;
   paidAmount?: number;
@@ -369,11 +363,10 @@ interface BusinessInfo {
   id?: string;
   name: string;
   phone: string;
-  telegram?: string;
-  whatsapp?: string;
   logo: string | null;
   activityIndex?: number;
   customActivity?: string;
+  invoicePrefix?: string;
 }
 
 interface Expense {
@@ -784,8 +777,6 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
           ...prev,
           serviceProvider: prev.serviceProvider || data.name || '',
           phoneNumber: prev.phoneNumber || data.phone || '',
-          telegram: prev.telegram || data.telegram || '',
-          whatsapp: prev.whatsapp || data.whatsapp || '',
           logo: prev.logo || data.logo || null,
           activityIndex: prev.activityIndex || data.activityIndex || 0,
           customActivity: prev.customActivity || data.customActivity || ''
@@ -988,13 +979,17 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     // Generate serial number for new invoices
     let serialNumber = invoiceData.serialNumber;
     if (!serialNumber) {
+      const prefix = businessInfo?.invoicePrefix || 'INV';
       const lastSerial = savedInvoices.length > 0 
         ? Math.max(...savedInvoices.map(inv => {
-            const match = inv.serialNumber?.match(/\d+/);
-            return match ? parseInt(match[0]) : 0;
+            if (inv.serialNumber && inv.serialNumber.startsWith(prefix)) {
+              const match = inv.serialNumber.match(/\d+/);
+              return match ? parseInt(match[0]) : 0;
+            }
+            return 0;
           }), 0)
         : 0;
-      serialNumber = `INV-${String(lastSerial + 1).padStart(4, '0')}`;
+      serialNumber = `${prefix}-${String(lastSerial + 1).padStart(4, '0')}`;
     }
 
     const invoiceToSave: InvoiceData = {
@@ -1026,8 +1021,8 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
 
       // Update contact balance and create payment record for guest
       if (invoiceToSave.contactId) {
+        const oldInvoice = savedInvoices.find(inv => inv.id === currentId);
         setContacts(prev => {
-          const oldInvoice = savedInvoices.find(inv => inv.id === currentId);
           let amountDiff = total;
           let paidDiff = 0;
           let balanceDiff = 0;
@@ -1066,19 +1061,24 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
 
         const isPaid = invoiceToSave.status === 'paid';
         const isPartial = invoiceToSave.status === 'partially-paid';
-        const paidAmount = isPaid ? total : (isPartial ? (invoiceToSave.paidAmount || 0) : 0);
+        const currentPaid = isPaid ? total : (isPartial ? (invoiceToSave.paidAmount || 0) : 0);
         
-        if (paidAmount > 0 && !savedInvoices.find(inv => inv.id === currentId)) {
-          // Only auto-create payment for NEW invoices to avoid duplicates
+        let paidDiff = currentPaid;
+        if (oldInvoice) {
+          const oldPaid = oldInvoice.status === 'paid' ? oldInvoice.totalAmount : (oldInvoice.status === 'partially-paid' ? (oldInvoice.paidAmount || 0) : 0);
+          paidDiff = currentPaid - oldPaid;
+        }
+
+        if (paidDiff > 0) {
           setPayments(prev => {
             const newPayment: Payment = {
               id: generateId(),
               contactId: invoiceToSave.contactId!,
               invoiceId: currentId,
-              amount: paidAmount,
+              amount: paidDiff,
               method: 'cash',
               date: new Date().toISOString(),
-              note: `Automated payment for ${invoiceToSave.serialNumber}${isPartial ? ' (Partial)' : ''}`
+              note: `Automated payment for ${invoiceToSave.serialNumber}${isPartial ? ' (Partial)' : (isPaid ? ' (Full)' : '')}`
             };
             const updated = [newPayment, ...prev];
             localStorage.setItem('gn_payments', JSON.stringify(updated));
@@ -1148,27 +1148,17 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
             });
 
             // Handle payment record for updates:
-            // Create payment if we now have a paid amount (full or partial) where there was none or different
-            if (currentPaid > 0) {
-              const paymentsRef = collection(db, "payments");
-              const q = query(paymentsRef, where("invoiceId", "==", invoiceData.id), where("userId", "==", user.uid));
-              const existingPayments = await getDocs(q);
-              
-              if (existingPayments.empty) {
-                await addDoc(paymentsRef, {
-                  userId: user.uid,
-                  contactId: invoiceToSave.contactId,
-                  invoiceId: invoiceData.id,
-                  amount: currentPaid,
-                  method: 'cash',
-                  date: serverTimestamp(),
-                  note: `Automated payment for ${invoiceToSave.serialNumber}${isPartial ? ' (Partial)' : ''}`
-                });
-              } else if (isPaid && oldInvoice?.status !== 'paid') {
-                  // If it changed to fully paid, we might want to update the existing payment or add a record for the rest
-                  // For simplicity, if we already have a payment record, we assume it's handled or we'd need more complex logic.
-                  // But at least now we create the initial record for partials too.
-              }
+            // Create a new payment record for the difference if more money was paid
+            if (paidDiff > 0) {
+              await addDoc(collection(db, "payments"), {
+                userId: user.uid,
+                contactId: invoiceToSave.contactId,
+                invoiceId: invoiceData.id,
+                amount: paidDiff,
+                method: 'cash',
+                date: serverTimestamp(),
+                note: `Automated payment for ${invoiceToSave.serialNumber}${isPartial ? ' (Partial)' : (isPaid ? ' (Full)' : '')}`
+              });
             }
           }
         }
@@ -1207,7 +1197,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                 amount: paidAmount,
                 method: 'cash',
                 date: serverTimestamp(),
-                note: `Automated payment for ${invoiceToSave.serialNumber}${isPartial ? ' (Partial)' : ''}`
+                note: `Automated payment for ${invoiceToSave.serialNumber}${isPartial ? ' (Partial)' : (isPaid ? ' (Full)' : '')}`
               });
             }
             
@@ -1798,7 +1788,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
       });
       
       const link = document.createElement('a');
-      link.download = `invoice-${Date.now()}.png`;
+      link.download = `invoice-${invoiceData.serialNumber || Date.now()}.png`;
       link.href = dataUrl;
       document.body.appendChild(link);
       link.click();
@@ -1856,7 +1846,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
       });
       
       pdf.addImage(dataUrl, 'JPEG', 0, 0, img.width, img.height, undefined, 'FAST');
-      pdf.save(`invoice-${Date.now()}.pdf`);
+      pdf.save(`invoice-${invoiceData.serialNumber || Date.now()}.pdf`);
 
     } catch (err) {
       console.error('Error generating PDF:', err);
@@ -1894,6 +1884,73 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     }, 800);
   };
 
+  const handleNewInvoice = () => {
+    // Generate serial number for the new invoice
+    const prefix = businessInfo?.invoicePrefix || 'INV';
+    const lastSerial = savedInvoices.length > 0 
+      ? Math.max(...savedInvoices.map(inv => {
+          if (inv.serialNumber && inv.serialNumber.startsWith(prefix)) {
+            const match = inv.serialNumber.match(/\d+/);
+            return match ? parseInt(match[0]) : 0;
+          }
+          return 0;
+        }), 0)
+      : 0;
+    const serialNumber = `${prefix}-${String(lastSerial + 1).padStart(4, '0')}`;
+
+    setInvoiceData({
+      invoiceTitle: translations[lang].invoiceTitleDefault,
+      serialNumber,
+      serviceProvider: invoiceData.serviceProvider || '',
+      clientName: '',
+      activityIndex: invoiceData.activityIndex || 0,
+      customActivity: invoiceData.customActivity || '',
+      logo: invoiceData.logo || null,
+      phoneNumber: invoiceData.phoneNumber || '',
+      items: [{ id: generateId(), description: '', price: 0 }],
+      totalAmount: 0,
+      status: 'pending'
+    });
+    setSaveNameInput('');
+    setIsPreviewMode(false);
+    setActiveTab('invoices');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleCreateInvoiceForClient = (client: any) => {
+    const prefix = businessInfo?.invoicePrefix || 'INV';
+    const lastSerial = savedInvoices.length > 0 
+      ? Math.max(...savedInvoices.map(inv => {
+          if (inv.serialNumber && inv.serialNumber.startsWith(prefix)) {
+            const match = inv.serialNumber.match(/\d+/);
+            return match ? parseInt(match[0]) : 0;
+          }
+          return 0;
+        }), 0)
+      : 0;
+    const serialNumber = `${prefix}-${String(lastSerial + 1).padStart(4, '0')}`;
+
+    setInvoiceData({
+      invoiceTitle: translations[lang].invoiceTitleDefault,
+      serialNumber,
+      serviceProvider: businessInfo?.name || '',
+      clientName: client.name,
+      activityIndex: businessInfo?.activityIndex || 0,
+      customActivity: businessInfo?.customActivity || '',
+      logo: businessInfo?.logo || null,
+      phoneNumber: client.phone,
+      contactId: client.id,
+      items: [{ id: generateId(), description: '', price: 0 }],
+      totalAmount: 0,
+      status: 'pending'
+    });
+    setSaveNameInput('');
+    setIsPreviewMode(false);
+    setActiveTab('invoices');
+    setSelectedClientId(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const activityDisplay = invoiceData.activityIndex === t.activities.length - 1 
     ? invoiceData.customActivity 
     : t.activities[invoiceData.activityIndex];
@@ -1926,13 +1983,17 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
 
   const handleCreateInvoiceForContact = async (contact: Contact) => {
     // Generate serial number for the new invoice
+    const prefix = businessInfo?.invoicePrefix || 'INV';
     const lastSerial = savedInvoices.length > 0 
       ? Math.max(...savedInvoices.map(inv => {
-          const match = inv.serialNumber?.match(/\d+/);
-          return match ? parseInt(match[0]) : 0;
+          if (inv.serialNumber && inv.serialNumber.startsWith(prefix)) {
+            const match = inv.serialNumber.match(/\d+/);
+            return match ? parseInt(match[0]) : 0;
+          }
+          return 0;
         }), 0)
       : 0;
-    const serialNumber = `INV-${String(lastSerial + 1).padStart(4, '0')}`;
+    const serialNumber = `${prefix}-${String(lastSerial + 1).padStart(4, '0')}`;
 
     const newInvoice: InvoiceData = {
       invoiceTitle: lang === 'ar' ? translations.ar.invoiceTitleDefault : translations.en.invoiceTitleDefault,
@@ -2187,23 +2248,48 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     );
   };
 
-  const DashboardView = () => {
-      // Generate chart data from payments and paid invoices
-      const combinedRevenue = [
-        ...payments.map(p => ({
-          date: p.date?.toDate ? p.date.toDate() : (p.date ? new Date(p.date) : new Date()),
-          amount: Number(p.amount) || 0
-        })),
-        ...savedInvoices.filter(i => i.status === 'paid').map(i => ({
-          date: i.savedAt ? new Date(i.savedAt) : new Date(),
-          amount: Number(i.totalAmount) || 0
-        }))
-      ];
+  const processedPayments = useMemo(() => {
+    const list = [...payments];
+    const invoicePaymentsMap = payments.reduce((acc, p) => {
+      if (p.invoiceId) acc[p.invoiceId] = (acc[p.invoiceId] || 0) + p.amount;
+      return acc;
+    }, {} as Record<string, number>);
 
-      const chartData = combinedRevenue
-        .sort((a, b) => a.date.getTime() - b.date.getTime())
+    savedInvoices.forEach(inv => {
+      const invTotalPaid = (inv.status === 'paid' ? inv.totalAmount : (inv.status === 'partially-paid' ? (inv.paidAmount || 0) : 0));
+      const recorded = invoicePaymentsMap[inv.id || ''] || 0;
+      if (invTotalPaid > recorded) {
+        list.push({
+          id: `v-${inv.id}`,
+          userId: inv.userId,
+          contactId: inv.contactId,
+          invoiceId: inv.id,
+          amount: invTotalPaid - recorded,
+          method: 'cash',
+          date: inv.updatedAt || inv.savedAt || new Date().toISOString(),
+          note: `${t.invoice} ${inv.serialNumber}`
+        });
+      }
+    });
+
+    return list.sort((a, b) => {
+      const dateA = new Date(a.date?.toDate ? a.date.toDate() : a.date).getTime();
+      const dateB = new Date(b.date?.toDate ? b.date.toDate() : b.date).getTime();
+      return dateB - dateA;
+    });
+  }, [payments, savedInvoices, t.invoice]);
+
+  const DashboardView = () => {
+      // Generate chart data from processed payments
+      const chartData = processedPayments
+        .sort((a, b) => {
+          const dateA = new Date(a.date?.toDate ? a.date.toDate() : a.date).getTime();
+          const dateB = new Date(b.date?.toDate ? b.date.toDate() : b.date).getTime();
+          return dateA - dateB;
+        })
         .reduce((acc: any[], item) => {
-          const dateLabel = item.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+          const dateObj = item.date?.toDate ? item.date.toDate() : new Date(item.date);
+          const dateLabel = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
           const existing = acc.find(entry => entry.date === dateLabel);
           if (existing) {
             existing.amount += item.amount;
@@ -2214,18 +2300,15 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
         }, [])
         .slice(-7);
 
-      const paymentsTotal = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-      const invoicesTotal = savedInvoices.filter(i => i.status === 'paid').reduce((sum, i) => sum + (Number(i.totalAmount) || 0), 0);
-      const totalRevenue = paymentsTotal + invoicesTotal;
+      const totalRevenue = processedPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
       const totalExpenses = expenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
       const netProfit = totalRevenue - totalExpenses;
 
       const dashboardInvoices = savedInvoices.slice(0, 4);
       
-      // Derive top clients derived from paid revenue
+      // Derive top clients derived from processed revenue
       const clientStats = contacts.map(c => {
-        const clientPaid = payments.filter(p => p.contactId === c.id).reduce((sum, p) => sum + (Number(p.amount) || 0), 0) +
-                           savedInvoices.filter(i => i.contactId === c.id && i.status === 'paid').reduce((sum, i) => sum + (Number(i.totalAmount) || 0), 0);
+        const clientPaid = processedPayments.filter(p => p.contactId === c.id).reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
         return { name: c.name, paid: clientPaid };
       }).sort((a, b) => b.paid - a.paid).slice(0, 3);
 
@@ -2364,7 +2447,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                     <h3 className="text-lg font-black mb-6">{lang === 'en' ? 'Quick Actions' : 'إجراءات سريعة'}</h3>
                     <div className="grid gap-3">
                       <button 
-                        onClick={() => { setActiveTab('invoices'); setIsPreviewMode(false); }}
+                        onClick={handleNewInvoice}
                         className="w-full flex items-center justify-between p-4 bg-white/10 hover:bg-white/20 rounded-2xl transition-all group"
                       >
                         <div className="flex items-center gap-3">
@@ -2458,7 +2541,8 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
       );
     };
 
-    const PaymentsView = () => (
+    const PaymentsView = () => {
+      return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
       <div className="flex items-center justify-between">
         <div>
@@ -2482,28 +2566,34 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
             </tr>
           </thead>
           <tbody>
-            {payments.map(p => {
+            {processedPayments.map(p => {
               const contact = contacts.find(c => c.id === p.contactId);
+              const isVirtual = p.id?.startsWith('v-');
               return (
                 <tr key={p.id} className="border-b border-[#1A1A1A]/5 dark:border-white/5 hover:bg-slate-50 dark:hover:bg-white/5">
                   <td className="px-6 py-4 font-bold text-sm">
-                    {p.date?.toDate ? p.date.toDate().toLocaleDateString() : new Date(p.date).toLocaleDateString()}
+                    {p.date?.toDate ? p.date.toDate().toLocaleString() : new Date(p.date).toLocaleString()}
                   </td>
                   <td className="px-6 py-4 font-bold text-sm">{contact?.name || 'Unknown'}</td>
                   <td className="px-6 py-4 font-bold text-xs uppercase tracking-widest text-blue-600">{p.method}</td>
                   <td className="px-6 py-4 font-black text-emerald-500 text-right">{t.currencySymbol}{p.amount.toLocaleString()}</td>
                   <td className="px-6 py-4 text-center">
-                    <Button 
-                      variant="danger" 
-                      size="icon" 
-                      onClick={(evt) => {
-                        evt.stopPropagation();
-                        setDeleteConfirm({ id: p.id, type: 'payment' });
-                      }} 
-                      className="h-10 w-10"
-                    >
-                       <Trash2 size={20} />
-                    </Button>
+                    {!isVirtual && (
+                      <Button 
+                        variant="danger" 
+                        size="icon" 
+                        onClick={(evt) => {
+                          evt.stopPropagation();
+                          setDeleteConfirm({ id: p.id, type: 'payment' });
+                        }} 
+                        className="h-10 w-10"
+                      >
+                         <Trash2 size={20} />
+                      </Button>
+                    )}
+                    {isVirtual && (
+                      <span className="text-[10px] font-black uppercase text-slate-400">{lang === 'en' ? 'Auto' : 'تلقائي'}</span>
+                    )}
                   </td>
                 </tr>
               );
@@ -2512,7 +2602,8 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
         </table>
       </div>
     </motion.div>
-  );
+    );
+    };
 
   const toggleUserApproval = async (uid: string, currentStatus: boolean) => {
     try {
@@ -2754,11 +2845,10 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     const [localInfo, setLocalInfo] = useState<BusinessInfo>(businessInfo || { 
       name: '', 
       phone: '01553251011', 
-      whatsapp: '01553251011',
-      telegram: '@GN_OA',
       logo: null, 
       activityIndex: 0, 
-      customActivity: '' 
+      customActivity: '',
+      invoicePrefix: 'INV'
     });
     const [isSaving, setIsSaving] = useState(false);
     const profileFileRef = useRef<HTMLInputElement>(null);
@@ -2767,7 +2857,27 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
       setIsSaving(true);
       if (user) {
         try {
-          // Using userId as doc ID for business info to keep it simple and unique per user
+          // 1. Check for uniqueness if prefix is changed
+          if (localInfo.invoicePrefix && localInfo.invoicePrefix !== (businessInfo?.invoicePrefix)) {
+            const q = query(
+              collection(db, "businessInfo"), 
+              where("invoicePrefix", "==", localInfo.invoicePrefix)
+            );
+            const querySnapshot = await getDocs(q);
+            
+            // If any other user already has this prefix
+            const exists = querySnapshot.docs.some(doc => doc.id !== user.uid);
+            
+            if (exists) {
+              alert(lang === 'ar' 
+                ? 'بادئة الفاتورة هذه مستخدمة بالفعل من قبل نشاط آخر. يرجى اختيار بادئة أخرى.' 
+                : 'This invoice prefix is already in use by another business. Please choose another one.');
+              setIsSaving(false);
+              return;
+            }
+          }
+
+          // 2. Save using userId as doc ID
           await setDoc(doc(db, "businessInfo", user.uid), {
             ...localInfo,
             userId: user.uid,
@@ -2779,11 +2889,10 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
             ...prev,
             serviceProvider: localInfo.name || prev.serviceProvider,
             phoneNumber: localInfo.phone || prev.phoneNumber,
-            telegram: localInfo.telegram || prev.telegram,
-            whatsapp: localInfo.whatsapp || prev.whatsapp,
             logo: localInfo.logo || prev.logo,
             activityIndex: localInfo.activityIndex ?? prev.activityIndex,
-            customActivity: localInfo.customActivity || prev.customActivity
+            customActivity: localInfo.customActivity || prev.customActivity,
+            serialNumber: prev.id ? prev.serialNumber : `${localInfo.invoicePrefix || 'INV'}-${String((savedInvoices.length + 1)).padStart(4, '0')}`
           }));
           alert(lang === 'ar' ? 'تم حفظ البيانات بنجاح' : 'Data saved successfully');
         } catch (err) {
@@ -2796,8 +2905,6 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
           ...prev,
           serviceProvider: localInfo.name || prev.serviceProvider,
           phoneNumber: localInfo.phone || prev.phoneNumber,
-          telegram: localInfo.telegram || prev.telegram,
-          whatsapp: localInfo.whatsapp || prev.whatsapp,
           logo: localInfo.logo || prev.logo,
           activityIndex: localInfo.activityIndex ?? prev.activityIndex,
           customActivity: localInfo.customActivity || prev.customActivity
@@ -2825,7 +2932,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     return (
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-2xl mx-auto space-y-8 pb-20">
         <div className="text-center mb-10">
-          <h2 className="text-3xl font-black mb-2">{lang === 'en' ? 'Business Profile' : 'بيانات العمل'}</h2>
+          <h2 className="text-3xl font-black mb-2">{lang === 'en' ? 'My Data' : 'بياناتي'}</h2>
           <p className="text-[#666666] dark:text-[#94A3B8]">{lang === 'en' ? 'These details will appear on your invoices automatically' : 'هذه التفاصيل ستظهر في فواتيرك تلقائياً'}</p>
         </div>
 
@@ -2850,7 +2957,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
             <div className={lang === 'ar' ? 'order-1' : ''}>
               <Label>{t.serviceProviderLabel}</Label>
               <Input 
-                value={localInfo.name} 
+                value={localInfo.name || ''} 
                 onChange={(e) => setLocalInfo(prev => ({ ...prev, name: e.target.value }))}
                 placeholder={t.serviceProviderPlaceholder}
               />
@@ -2858,31 +2965,33 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
             <div className={lang === 'ar' ? 'order-2' : ''}>
               <Label>{t.contactPhone}</Label>
               <Input 
-                value={localInfo.phone} 
+                value={localInfo.phone || ''} 
                 onChange={(e) => setLocalInfo(prev => ({ ...prev, phone: e.target.value }))}
                 placeholder={t.phonePlaceholder}
               />
             </div>
             <div className={lang === 'ar' ? 'order-3' : ''}>
-              <Label>{t.whatsapp}</Label>
+              <Label>{lang === 'en' ? 'Invoice Prefix' : 'بادئة الفاتورة'}</Label>
               <Input 
-                value={localInfo.whatsapp} 
-                onChange={(e) => setLocalInfo(prev => ({ ...prev, whatsapp: e.target.value }))}
-                placeholder="01..."
+                value={localInfo.invoicePrefix || ''} 
+                onChange={(e) => {
+                  const val = e.target.value.toUpperCase();
+                  // Only English letters and max 6 characters
+                  if (/^[A-Z]*$/.test(val) && val.length <= 6) {
+                    setLocalInfo(prev => ({ ...prev, invoicePrefix: val }));
+                  }
+                }}
+                placeholder="INV, GN..."
+                maxLength={6}
               />
-            </div>
-            <div className={lang === 'ar' ? 'order-4' : ''}>
-              <Label>{t.telegram}</Label>
-              <Input 
-                value={localInfo.telegram} 
-                onChange={(e) => setLocalInfo(prev => ({ ...prev, telegram: e.target.value }))}
-                placeholder="@..."
-              />
+              <p className="text-[10px] text-slate-400 mt-1">
+                {lang === 'ar' ? 'أحرف إنجليزية فقط، بحد أقصى 6 أحرف' : 'English letters only, max 6 characters'}
+              </p>
             </div>
             <div className="md:col-span-2 text-right">
               <Label>{t.businessActivity}</Label>
               <select
-                value={localInfo.activityIndex}
+                value={localInfo.activityIndex ?? 0}
                 onChange={(e) => setLocalInfo(prev => ({ ...prev, activityIndex: parseInt(e.target.value) || 0 }))}
                 className="flex h-11 w-full rounded-lg border border-[#E5E5E5] bg-white dark:bg-[#121212] dark:border-[#333333] dark:text-white px-3 py-2 text-sm focus:outline-none"
               >
@@ -2895,7 +3004,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
               <div className="md:col-span-2">
                 <Label>{t.customActivity}</Label>
                 <Input 
-                  value={localInfo.customActivity} 
+                  value={localInfo.customActivity || ''} 
                   onChange={(e) => setLocalInfo(prev => ({ ...prev, customActivity: e.target.value }))}
                   placeholder={t.customActivityPlaceholder}
                 />
@@ -3022,6 +3131,10 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
           title={
             activeTab === 'contacts' ? (lang === 'ar' ? 'إدارة العملاء' : 'Clients Management') : 
             activeTab === 'subscribers' ? (lang === 'ar' ? 'إدارة المشتركين' : 'Subscribers') :
+            activeTab === 'payments' ? (lang === 'ar' ? 'المدفوعات' : 'Payments') :
+            activeTab === 'expenses' ? (lang === 'ar' ? 'المصروفات' : 'Expenses') :
+            activeTab === 'profile' ? (lang === 'ar' ? 'بياناتي' : 'My Data') :
+            activeTab === 'history' ? (lang === 'ar' ? 'سجل الفواتير' : 'Invoice History') :
             (lang === 'ar' ? t.dashboard : t.dashboard)
           }
           user={user}
@@ -3060,8 +3173,13 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                   clientId={selectedClientId}
                   clients={mappedClients as any}
                   invoices={savedInvoices}
-                  payments={payments}
+                  payments={processedPayments}
                   onBack={() => setSelectedClientId(null)}
+                  onEditInvoice={handleLoadInvoice}
+                  onDeleteInvoice={confirmDelete}
+                  onDownloadInvoice={handleDownloadHistoryInvoice}
+                  onAddInvoice={handleCreateInvoiceForClient}
+                  onMarkAsPaid={handleMarkAsPaid}
                   lang={lang}
                 />
               ) : (
@@ -3130,7 +3248,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                       </div>
                       <Input 
                         placeholder={t.invoiceTitlePlaceholder}
-                        value={invoiceData.invoiceTitle}
+                        value={invoiceData.invoiceTitle || ''}
                         onChange={(e) => handleFieldChangeWithSuggestions('invoiceTitle', e.target.value)}
                         onBlur={() => setTimeout(() => setActiveSuggestionField(null), 200)}
                       />
@@ -3153,7 +3271,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                       <Label>{t.serviceProviderLabel}</Label>
                       <Input 
                         placeholder={t.serviceProviderPlaceholder}
-                        value={invoiceData.serviceProvider}
+                        value={invoiceData.serviceProvider || ''}
                         onChange={(e) => handleFieldChangeWithSuggestions('serviceProvider', e.target.value)}
                         onBlur={() => setTimeout(() => setActiveSuggestionField(null), 200)}
                       />
@@ -3199,7 +3317,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                       )}
                       <Input 
                         placeholder={t.clientNamePlaceholder}
-                        value={invoiceData.clientName}
+                        value={invoiceData.clientName || ''}
                         onChange={(e) => {
                           handleFieldChangeWithSuggestions('clientName', e.target.value);
                         }}
@@ -3267,7 +3385,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                           <Label>{t.customActivity}</Label>
                           <Input 
                             placeholder={t.customActivityPlaceholder}
-                            value={invoiceData.customActivity}
+                            value={invoiceData.customActivity || ''}
                             onChange={(e) => setInvoiceData(prev => ({ ...prev, customActivity: e.target.value }))}
                           />
                         </motion.div>
@@ -3282,7 +3400,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                           <Input 
                             placeholder={t.phonePlaceholder}
                             className={lang === 'ar' ? 'pr-12' : 'pl-12'}
-                            value={invoiceData.phoneNumber}
+                            value={invoiceData.phoneNumber || ''}
                             onChange={(e) => handleFieldChangeWithSuggestions('phoneNumber', e.target.value)}
                             onBlur={() => setTimeout(() => setActiveSuggestionField(null), 200)}
                           />
@@ -3470,7 +3588,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                               {index === 0 && <Label className="text-[10px] opacity-50">{t.description}</Label>}
                               <Input 
                                 placeholder={t.descPlaceholder}
-                                value={item.description}
+                                value={item.description || ''}
                                 onChange={(e) => handleFieldChangeWithSuggestions('description', e.target.value, index)}
                                 onBlur={() => setTimeout(() => {
                                   setActiveSuggestionField(null);
@@ -3643,8 +3761,8 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                       <h1 className={cn("text-5xl font-black text-[#1A1A1A] dark:text-[#E2E8F0] uppercase", lang === 'en' ? "tracking-tighter mb-2" : "mb-10")}>{t.invoice}</h1>
                       <p className={cn("text-sm font-bold text-[#666666] dark:text-[#94A3B8] uppercase", lang === 'en' ? "tracking-widest mb-4" : "mb-6")}>{invoiceData.invoiceTitle || t.invoiceTitlePlaceholder}</p>
                       <div className="space-y-1 text-sm text-[#666666] dark:text-[#94A3B8]">
-                        <p className="font-medium">{t.date}: {new Date().toLocaleDateString(lang === 'ar' ? 'ar-EG-u-ca-gregory' : 'en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
-                        <p>{t.invoiceNo}: #INV-{Math.floor(100000 + Math.random() * 900000)}</p>
+                        <p className="font-medium">{t.date}: {(invoiceData.savedAt ? new Date(invoiceData.savedAt) : new Date()).toLocaleDateString(lang === 'ar' ? 'ar-EG-u-ca-gregory' : 'en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+                        <p>{t.invoiceNo}: {invoiceData.serialNumber || (lang === 'ar' ? 'مسودة' : 'DRAFT')}</p>
                       </div>
                       {!isGenerating && (
                         <div className={cn("mt-4 flex no-print", lang === 'ar' ? 'justify-start' : 'justify-end')}>
@@ -3745,7 +3863,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                   </div>
 
                   {/* Contact Bottom */}
-                  {(invoiceData.phoneNumber || invoiceData.whatsapp || invoiceData.telegram) && (
+                  {invoiceData.phoneNumber && (
                     <div className="mt-24 flex flex-col items-center justify-center gap-6 border-t-2 border-[#F0F0F0] dark:border-white/5 pt-16">
                       <div className="flex flex-wrap items-center justify-center gap-8">
                         {invoiceData.phoneNumber && (
@@ -3755,26 +3873,6 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                             </span>
                             <span className="text-2xl font-black text-[#1A1A1A] dark:text-[#E2E8F0] tracking-tighter">
                                {invoiceData.phoneNumber}
-                            </span>
-                          </div>
-                        )}
-                        {invoiceData.whatsapp && (
-                          <div className="flex items-center gap-4">
-                            <span className="text-sm font-bold text-[#666666] dark:text-[#94A3B8] uppercase tracking-widest">
-                               {lang === 'ar' ? 'واتساب:' : 'WhatsApp:'}
-                            </span>
-                            <span className="text-2xl font-black text-[#1A1A1A] dark:text-[#E2E8F0] tracking-tighter">
-                               {invoiceData.whatsapp}
-                            </span>
-                          </div>
-                        )}
-                        {invoiceData.telegram && (
-                          <div className="flex items-center gap-4">
-                            <span className="text-sm font-bold text-[#666666] dark:text-[#94A3B8] uppercase tracking-widest">
-                               {lang === 'ar' ? 'تلجرام:' : 'Telegram:'}
-                            </span>
-                            <span className="text-2xl font-black text-[#1A1A1A] dark:text-[#E2E8F0] tracking-tighter">
-                               {invoiceData.telegram}
                             </span>
                           </div>
                         )}
@@ -3842,7 +3940,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                   <h2 className="text-3xl font-black">{t.history}</h2>
                   <p className="text-[#666666] dark:text-[#94A3B8]">{lang === 'en' ? 'Manage and track all your recorded business transactions' : 'إدارة وتتبع جميع معاملاتك التجارية المسجلة'}</p>
                 </div>
-                <Button onClick={() => { setActiveTab('invoices'); setIsPreviewMode(false); }} className="gap-2">
+                <Button onClick={handleNewInvoice} className="gap-2">
                   <Plus size={18} /> {lang === 'en' ? 'New Invoice' : 'فاتورة جديدة'}
                 </Button>
               </div>
@@ -3997,7 +4095,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                  <div>
                    <Label>{t.clientName}</Label>
                    <Input 
-                     value={newContactData.name}
+                     value={newContactData.name || ''}
                      onChange={e => setNewContactData(prev => ({ ...prev, name: e.target.value }))}
                      placeholder={lang === 'en' ? 'Full Name' : 'الاسم الكامل'}
                      className="h-12 bg-slate-50 dark:bg-white/5 border-none font-bold"
@@ -4007,7 +4105,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                    <div>
                      <Label>{t.phone}</Label>
                      <Input 
-                       value={newContactData.phone}
+                       value={newContactData.phone || ''}
                        onChange={e => setNewContactData(prev => ({ ...prev, phone: e.target.value }))}
                        placeholder="05..."
                        className="h-12 bg-slate-50 dark:bg-white/5 border-none font-bold"
@@ -4016,7 +4114,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                    <div>
                      <Label>{t.email}</Label>
                      <Input 
-                       value={newContactData.email}
+                       value={newContactData.email || ''}
                        onChange={e => setNewContactData(prev => ({ ...prev, email: e.target.value }))}
                        placeholder="example@..."
                        className="h-12 bg-slate-50 dark:bg-white/5 border-none font-bold"
@@ -4026,7 +4124,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                  <div>
                    <h2 className="text-sm font-bold text-[#666666] mb-3">{t.address}</h2>
                    <textarea 
-                     value={newContactData.address}
+                     value={newContactData.address || ''}
                      onChange={e => setNewContactData(prev => ({ ...prev, address: e.target.value }))}
                      className="w-full min-h-[100px] p-4 bg-slate-50 dark:bg-white/5 border-none rounded-2xl outline-none focus:ring-2 focus:ring-blue-500/20 font-bold transition-all"
                      placeholder={lang === 'en' ? 'Business address...' : 'عنوان العمل...'}
@@ -4076,7 +4174,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                      <Label>{lang === 'en' ? 'Amount' : 'المبلغ'}</Label>
                      <Input 
                        type="number"
-                       value={newPaymentData.amount}
+                       value={newPaymentData.amount || ''}
                        onChange={e => setNewPaymentData(prev => ({ ...prev, amount: parseFloat(e.target.value) || 0 }))}
                        className="h-12 bg-slate-50 dark:bg-white/5 border-none font-bold"
                      />
@@ -4125,7 +4223,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                  <div>
                    <Label>{lang === 'en' ? 'Description' : 'الوصف'}</Label>
                    <Input 
-                     value={newExpenseData.description}
+                     value={newExpenseData.description || ''}
                      onChange={e => setNewExpenseData(prev => ({ ...prev, description: e.target.value }))}
                      className="h-12 bg-slate-50 dark:bg-white/5 border-none font-bold"
                      placeholder={lang === 'en' ? 'Rent, Marketing, etc.' : 'إيجار، تسويق، إلخ.'}
@@ -4136,7 +4234,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                      <Label>{lang === 'en' ? 'Amount' : 'المبلغ'}</Label>
                      <Input 
                        type="number"
-                       value={newExpenseData.amount}
+                       value={newExpenseData.amount || ''}
                        onChange={e => setNewExpenseData(prev => ({ ...prev, amount: parseFloat(e.target.value) || 0 }))}
                        className="h-12 bg-slate-50 dark:bg-white/5 border-none font-bold"
                      />

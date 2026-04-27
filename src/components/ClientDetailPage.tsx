@@ -57,6 +57,11 @@ interface ClientDetailPageProps {
   invoices: Invoice[];
   payments: Payment[];
   onBack: () => void;
+  onEditInvoice: (invoice: Invoice) => void;
+  onDeleteInvoice: (id: string) => void;
+  onDownloadInvoice: (invoice: Invoice) => void;
+  onAddInvoice: (client: Client) => void;
+  onMarkAsPaid?: (invoice: Invoice) => void;
   lang?: 'ar' | 'en';
 }
 
@@ -66,6 +71,11 @@ const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
   invoices, 
   payments, 
   onBack,
+  onEditInvoice,
+  onDeleteInvoice,
+  onDownloadInvoice,
+  onAddInvoice,
+  onMarkAsPaid,
   lang = 'ar'
 }) => {
   const isAr = lang === 'ar';
@@ -123,9 +133,12 @@ const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
             <Download size={18} />
             <span>{isAr ? 'تصدير الكشف' : 'Export Statement'}</span>
           </button>
-          <button className="flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-xl shadow-lg shadow-primary/20 hover:opacity-90 transition-all font-bold text-sm">
-            <Wallet size={18} />
-            <span>{isAr ? 'تسجيل دفعة' : 'Register Payment'}</span>
+          <button 
+            onClick={() => onAddInvoice(client)}
+            className="flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-xl shadow-lg shadow-primary/20 hover:opacity-90 transition-all font-bold text-sm"
+          >
+            <Receipt size={18} />
+            <span>{isAr ? 'إنشاء فاتورة' : 'Create Invoice'}</span>
           </button>
         </div>
       </div>
@@ -174,12 +187,12 @@ const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
               clientInvoices.map(inv => (
                 <div key={inv.id} className="p-5 rounded-2xl bg-white border border-slate-100 hover:border-primary/20 transition-all shadow-sm group">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-4 flex-1">
                       <div className="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center group-hover:bg-primary/5 transition-all text-slate-400 group-hover:text-primary">
                         <Receipt size={24} />
                       </div>
-                      <div>
-                        <h4 className="font-bold text-slate-900">{inv.invoiceTitle || (isAr ? 'فاتورة بدون عنوان' : 'Untitled Invoice')}</h4>
+                      <div className="flex-1">
+                        <h4 className="font-bold text-slate-900 line-clamp-1">{inv.invoiceTitle || (isAr ? 'فاتورة بدون عنوان' : 'Untitled Invoice')}</h4>
                         <p className="text-xs font-medium text-slate-400 flex items-center gap-2 mt-1">
                           <span className="font-black text-blue-600">{inv.serialNumber}</span>
                           <span className="w-1 h-1 rounded-full bg-slate-300" />
@@ -188,9 +201,9 @@ const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
                       </div>
                     </div>
                     
-                    <div className="flex items-center gap-6">
+                    <div className="flex flex-col md:flex-row items-center gap-4 md:gap-8">
                       <div className="text-left md:text-right">
-                        <p className="text-lg font-black text-slate-900">{inv.totalAmount.toLocaleString()} ج.م</p>
+                        <p className="text-lg font-black text-slate-900 whitespace-nowrap">{inv.totalAmount.toLocaleString()} ج.م</p>
                         <span className={cn(
                           "text-[10px] font-black uppercase tracking-widest",
                           inv.status === 'paid' ? "text-emerald-500" : 
@@ -204,9 +217,51 @@ const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
                           ) : inv.status}
                         </span>
                       </div>
-                      <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-50 text-slate-400">
-                         {isAr ? <ChevronLeft size={20} /> : <ChevronLeft size={20} className="rotate-180" />}
-                      </button>
+                      
+                      <div className="flex items-center gap-1">
+                        {inv.status !== 'paid' && onMarkAsPaid && (
+                          <button 
+                            onClick={() => onMarkAsPaid(inv)}
+                            className="p-2 rounded-lg text-emerald-600 hover:bg-emerald-50 transition-all"
+                            title={isAr ? 'تم الدفع' : 'Mark Paid'}
+                          >
+                            <div className="flex flex-col items-center gap-1">
+                              <Wallet size={18} />
+                              <span className="text-[8px] font-black">{isAr ? 'دفع' : 'Pay'}</span>
+                            </div>
+                          </button>
+                        )}
+                        <button 
+                          onClick={() => onEditInvoice(inv)}
+                          className="p-2 rounded-lg text-slate-400 hover:text-primary hover:bg-primary/5 transition-all"
+                          title={isAr ? 'تعديل' : 'Edit'}
+                        >
+                          <div className="flex flex-col items-center gap-1">
+                            <Receipt size={18} />
+                            <span className="text-[8px] font-black">{isAr ? 'تعديل' : 'Edit'}</span>
+                          </div>
+                        </button>
+                        <button 
+                          onClick={() => onDownloadInvoice(inv)}
+                          className="p-2 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-all"
+                          title={isAr ? 'تحميل' : 'Download'}
+                        >
+                          <div className="flex flex-col items-center gap-1">
+                            <Download size={18} />
+                            <span className="text-[8px] font-black">{isAr ? 'تحميل' : 'Get'}</span>
+                          </div>
+                        </button>
+                        <button 
+                          onClick={() => onDeleteInvoice(inv.id)}
+                          className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all"
+                          title={isAr ? 'حذف' : 'Delete'}
+                        >
+                          <div className="flex flex-col items-center gap-1">
+                            <Trash2 size={18} />
+                            <span className="text-[8px] font-black">{isAr ? 'حذف' : 'Del'}</span>
+                          </div>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>

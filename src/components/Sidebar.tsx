@@ -26,8 +26,9 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, onAddClient, 
     { id: 'dashboard', label: isAr ? 'لوحة التحكم' : 'Dashboard', icon: LayoutDashboard },
     { id: 'contacts', label: isAr ? 'العملاء' : 'Clients', icon: Users },
     { id: 'invoices', label: isAr ? 'الفواتير' : 'Invoices', icon: ReceiptText },
-    { id: 'reports', label: isAr ? 'التقارير' : 'Reports', icon: BarChart3 },
-    { id: 'settings', label: isAr ? 'الإعدادات' : 'Settings', icon: Settings },
+    { id: 'payments', label: isAr ? 'المدفوعات' : 'Payments', icon: BarChart3 },
+    { id: 'expenses', label: isAr ? 'المصروفات' : 'Expenses', icon: BarChart3 },
+    { id: 'profile', label: isAr ? 'بياناتي' : 'My Data', icon: Settings },
   ];
 
   if (isSuperAdmin) {
