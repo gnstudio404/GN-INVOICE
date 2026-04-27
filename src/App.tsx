@@ -1470,17 +1470,44 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     const id = clientToDelete;
     setClientToDelete(null);
 
+    // Handle local state/storage (unauthenticated users)
     if (!user) {
       setContacts(prev => {
         const updated = prev.filter(c => c.id !== id);
         localStorage.setItem('gn_contacts', JSON.stringify(updated));
         return updated;
       });
+      setSavedInvoices(prev => {
+        const updated = prev.filter(inv => inv.contactId !== id);
+        localStorage.setItem('gn_invoices', JSON.stringify(updated));
+        return updated;
+      });
+      setPayments(prev => {
+        const updated = prev.filter(p => p.contactId !== id);
+        localStorage.setItem('gn_payments', JSON.stringify(updated));
+        return updated;
+      });
       return;
     }
 
     try {
+      // 1. Delete associated invoices
+      const invoicesQuery = query(collection(db, "invoices"), where("contactId", "==", id), where("userId", "==", user.uid));
+      const invoicesSnap = await getDocs(invoicesQuery);
+      for (const invDoc of invoicesSnap.docs) {
+        await deleteDoc(invDoc.ref);
+      }
+
+      // 2. Delete associated payments
+      const paymentsQuery = query(collection(db, "payments"), where("contactId", "==", id), where("userId", "==", user.uid));
+      const paymentsSnap = await getDocs(paymentsQuery);
+      for (const pDoc of paymentsSnap.docs) {
+        await deleteDoc(pDoc.ref);
+      }
+
+      // 3. Delete the client itself
       await deleteDoc(doc(db, "clients", id));
+      
       if (selectedContactId === id) setSelectedContactId(null);
       if (selectedClientId === id) setSelectedClientId(null);
     } catch (err) {
