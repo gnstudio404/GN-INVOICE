@@ -43,11 +43,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ lang, setLang, isDarkMode, se
     checkRedirect();
 
     const unsub = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        navigate('/invoice', { replace: true });
-      } else {
-        setCheckingAuth(false);
-      }
+      setCheckingAuth(false);
     });
     return () => unsub();
   }, [navigate]);

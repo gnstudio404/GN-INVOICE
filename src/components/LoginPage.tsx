@@ -121,13 +121,8 @@ const LoginPage: React.FC<LoginPageProps> = ({ lang, isDarkMode }) => {
     // 2. Handle standard auth state
     const unsub = onAuthStateChanged(auth, (user) => {
       console.log("[LoginPage] Auth state change:", user ? "Logged In" : "Logged Out");
-      if (user) {
-        navigate('/invoice', { replace: true });
-      } else {
-        // Only stop loading if we haven't found a user
-        // We wait a bit to ensure redirect result had a chance if it's there
-        setAuthLoading(false);
-      }
+      // Only stop loading if we haven't found a user
+      setAuthLoading(false);
     });
 
     return () => unsub();
@@ -160,6 +155,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ lang, isDarkMode }) => {
       console.log("[LoginPage] Attempting popup auth...");
       await signInWithPopup(auth, googleProvider);
       console.log("[LoginPage] Popup auth success.");
+      navigate('/invoice');
     } catch (error: any) {
       console.error("[LoginPage] Popup Login error:", error);
       
@@ -196,6 +192,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ lang, isDarkMode }) => {
       } else {
         await signInWithEmailAndPassword(auth, email, password);
       }
+      navigate('/invoice');
     } catch (error: any) {
       console.error("Auth error:", error);
       setErrorMessage(error.message);
@@ -293,65 +290,97 @@ const LoginPage: React.FC<LoginPageProps> = ({ lang, isDarkMode }) => {
           </div>
 
           <form onSubmit={handleEmailAuth} className="space-y-5">
-            <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-[0.2em] text-[#1A1A1A]/50 dark:text-[#E2E8F0]/50 ml-1">
-                {t.email}
-              </label>
-              <div className="relative group">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#999999] group-focus-within:text-blue-500 transition-all duration-300" />
-                <input 
-                  type="email"
-                  required
-                  placeholder={t.emailPlaceholder}
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full h-14 pl-12 pr-4 bg-white dark:bg-[#0F172A] border-2 border-[#1A1A1A]/5 dark:border-white/5 rounded-2xl focus:border-blue-500 dark:focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all font-bold placeholder:font-medium"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-[0.2em] text-[#1A1A1A]/50 dark:text-[#E2E8F0]/50 ml-1">
-                {t.password}
-              </label>
-              <div className="relative group">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#999999] group-focus-within:text-indigo-500 transition-all duration-300" />
-                <input 
-                  type="password"
-                  required
-                  placeholder={t.passwordPlaceholder}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full h-14 pl-12 pr-4 bg-white dark:bg-[#0F172A] border-2 border-[#1A1A1A]/5 dark:border-white/5 rounded-2xl focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-bold placeholder:font-medium"
-                />
-              </div>
-            </div>
-
-            <AnimatePresence mode="wait">
-              {errorMessage && (
-                <motion.div 
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className="flex items-center gap-3 p-4 rounded-2xl bg-red-50 dark:bg-red-900/10 text-red-600 dark:text-red-400 text-xs font-bold border border-red-100 dark:border-red-900/20"
+            {auth.currentUser ? (
+              <div className="space-y-4">
+                <div className="p-4 bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-900/20 rounded-2xl flex items-center gap-3">
+                  <ShieldCheck className="text-emerald-500" />
+                  <div className="text-left">
+                    <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                      {lang === 'en' ? 'Already Authenticated' : 'أنت مسجل الدخول بالفعل'}
+                    </p>
+                    <p className="text-xs text-emerald-500/80">
+                      {auth.currentUser.email}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => navigate('/invoice')}
+                  className="w-full h-14 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs hover:shadow-xl active:scale-95 transition-all shadow-lg shadow-blue-500/20"
                 >
-                  <AlertCircle size={18} className="shrink-0" />
-                  <span>{errorMessage}</span>
-                </motion.div>
-              )}
-            </AnimatePresence>
+                  {lang === 'en' ? 'Go to Business Center' : 'الدخول لمركز الأعمال'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => auth.signOut()}
+                  className="w-full text-center text-xs font-bold text-slate-500 hover:text-red-500 transition-colors uppercase tracking-widest"
+                >
+                  {lang === 'en' ? 'Sign Out' : 'تسجيل الخروج'}
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-[0.2em] text-[#1A1A1A]/50 dark:text-[#E2E8F0]/50 ml-1">
+                    {t.email}
+                  </label>
+                  <div className="relative group">
+                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#999999] group-focus-within:text-blue-500 transition-all duration-300" />
+                    <input 
+                      type="email"
+                      required
+                      placeholder={t.emailPlaceholder}
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full h-14 pl-12 pr-4 bg-white dark:bg-[#0F172A] border-2 border-[#1A1A1A]/5 dark:border-white/5 rounded-2xl focus:border-blue-500 dark:focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all font-bold placeholder:font-medium"
+                    />
+                  </div>
+                </div>
 
-            <button
-              type="submit"
-              disabled={isLoggingIn}
-              className="w-full h-14 bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 text-white rounded-2xl font-black uppercase tracking-[0.2em] text-xs hover:shadow-xl hover:shadow-indigo-500/30 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center cursor-pointer shadow-lg shadow-indigo-500/10"
-            >
-              {isLoggingIn ? (
-                <div className="h-5 w-5 animate-spin rounded-full border-2 border-current border-t-transparent" />
-              ) : (
-                isSignup ? t.signUp : t.signIn
-              )}
-            </button>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-[0.2em] text-[#1A1A1A]/50 dark:text-[#E2E8F0]/50 ml-1">
+                    {t.password}
+                  </label>
+                  <div className="relative group">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#999999] group-focus-within:text-indigo-500 transition-all duration-300" />
+                    <input 
+                      type="password"
+                      required
+                      placeholder={t.passwordPlaceholder}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full h-14 pl-12 pr-4 bg-white dark:bg-[#0F172A] border-2 border-[#1A1A1A]/5 dark:border-white/5 rounded-2xl focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-bold placeholder:font-medium"
+                    />
+                  </div>
+                </div>
+
+                <AnimatePresence mode="wait">
+                  {errorMessage && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      className="flex items-center gap-3 p-4 rounded-2xl bg-red-50 dark:bg-red-900/10 text-red-600 dark:text-red-400 text-xs font-bold border border-red-100 dark:border-red-900/20"
+                    >
+                      <AlertCircle size={18} className="shrink-0" />
+                      <span>{errorMessage}</span>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                <button
+                  type="submit"
+                  disabled={isLoggingIn}
+                  className="w-full h-14 bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 text-white rounded-2xl font-black uppercase tracking-[0.2em] text-xs hover:shadow-xl hover:shadow-indigo-500/30 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center cursor-pointer shadow-lg shadow-indigo-500/10"
+                >
+                  {isLoggingIn ? (
+                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                  ) : (
+                    isSignup ? t.signUp : t.signIn
+                  )}
+                </button>
+              </>
+            )}
           </form>
 
           <div className="relative my-10">
