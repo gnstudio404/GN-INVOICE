@@ -598,6 +598,38 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
   }, [activeTab]);
 
   // Firebase Auth and Firestore listener
+  const generateUniquePrefix = async (): Promise<string> => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const generateRaw = () => {
+      let res = '';
+      for (let i = 0; i < 3; i++) {
+        res += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return res;
+    };
+
+    let prefix = generateRaw();
+    let isUnique = false;
+    let attempts = 0;
+
+    while (!isUnique && attempts < 15) {
+      const q = query(collection(db, "businessInfo"), where("invoicePrefix", "==", prefix));
+      const snap = await getDocs(q);
+      if (snap.empty) {
+        isUnique = true;
+      } else {
+        prefix = generateRaw();
+        attempts++;
+      }
+    }
+    
+    if (!isUnique) {
+      prefix = generateRaw() + chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+
+    return prefix;
+  };
+
   useEffect(() => {
     // 1. Handle redirect result
     const checkRedirect = async () => {
@@ -648,6 +680,27 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
         } else {
           await updateDoc(userRef, { lastLogin: serverTimestamp() });
         }
+
+        // Initialize business info with unique prefix if missing
+        const bizRef = doc(db, "businessInfo", user.uid);
+        const bizSnap = await getDoc(bizRef);
+        if (!bizSnap.exists() || !bizSnap.data()?.invoicePrefix) {
+          const newPrefix = await generateUniquePrefix();
+          if (!bizSnap.exists()) {
+            await setDoc(bizRef, {
+              userId: user.uid,
+              name: user.displayName || '',
+              phone: '01553251011',
+              logo: null,
+              activityIndex: 0,
+              customActivity: '',
+              invoicePrefix: newPrefix,
+              createdAt: serverTimestamp()
+            });
+          } else {
+            await updateDoc(bizRef, { invoicePrefix: newPrefix });
+          }
+        }
       } catch (err) {
         console.error("Error initializing profile:", err);
       }
@@ -696,7 +749,29 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
       return;
     }
 
-    if (!isApproved) return;
+    const businessQuery = query(collection(db, "businessInfo"), where("userId", "==", user.uid));
+    const unsubBusiness = onSnapshot(businessQuery, (snapshot) => {
+      if (!snapshot.empty) {
+        const data = snapshot.docs[0].data();
+        setBusinessInfo({ ...data, id: snapshot.docs[0].id } as BusinessInfo);
+        
+        // Auto-fill invoice if it's empty
+        setInvoiceData(prev => ({
+          ...prev,
+          serviceProvider: prev.serviceProvider || data.name || '',
+          phoneNumber: prev.phoneNumber || data.phone || '',
+          logo: prev.logo || data.logo || null,
+          activityIndex: prev.activityIndex || data.activityIndex || 0,
+          customActivity: prev.customActivity || data.customActivity || ''
+        }));
+      }
+    }, (error) => console.error("Business info listener error:", error));
+
+    if (!isApproved) {
+      return () => {
+        unsubBusiness();
+      };
+    }
 
     const q = query(
       collection(db, "invoices"),
@@ -766,24 +841,6 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     const unsubProducts = onSnapshot(productsQuery, (snapshot) => {
       setProducts(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as Product[]);
     }, (error) => console.error("Products listener error:", error));
-
-    const businessQuery = query(collection(db, "businessInfo"), where("userId", "==", user.uid));
-    const unsubBusiness = onSnapshot(businessQuery, (snapshot) => {
-      if (!snapshot.empty) {
-        const data = snapshot.docs[0].data();
-        setBusinessInfo({ ...data, id: snapshot.docs[0].id } as BusinessInfo);
-        
-        // Auto-fill invoice if it's empty
-        setInvoiceData(prev => ({
-          ...prev,
-          serviceProvider: prev.serviceProvider || data.name || '',
-          phoneNumber: prev.phoneNumber || data.phone || '',
-          logo: prev.logo || data.logo || null,
-          activityIndex: prev.activityIndex || data.activityIndex || 0,
-          customActivity: prev.customActivity || data.customActivity || ''
-        }));
-      }
-    }, (error) => console.error("Business info listener error:", error));
 
     return () => {
       unsubFirestore();
@@ -2853,7 +2910,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
       logo: null, 
       activityIndex: 0, 
       customActivity: '',
-      invoicePrefix: 'INV'
+      invoicePrefix: ''
     });
     const [isSaving, setIsSaving] = useState(false);
     const profileFileRef = useRef<HTMLInputElement>(null);
@@ -2866,41 +2923,26 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
 
     const handleSave = async () => {
       setIsSaving(true);
+      let currentLocalInfo = { ...localInfo };
+
       if (user) {
         try {
-          // 1. Check for uniqueness if prefix is changed
-          if (localInfo.invoicePrefix && localInfo.invoicePrefix !== (businessInfo?.invoicePrefix)) {
-            const q = query(
-              collection(db, "businessInfo"), 
-              where("invoicePrefix", "==", localInfo.invoicePrefix)
-            );
-            const querySnapshot = await getDocs(q);
-            
-            // If any other user already has this prefix
-            const exists = querySnapshot.docs.some(doc => doc.id !== user.uid);
-            
-            if (exists) {
-              alert(lang === 'ar' 
-                ? 'بادئة الفاتورة هذه مستخدمة بالفعل من قبل نشاط آخر. يرجى اختيار بادئة أخرى.' 
-                : 'This invoice prefix is already in use by another business. Please choose another one.');
-              setIsSaving(false);
-              return;
-            }
+          if (!currentLocalInfo.invoicePrefix) {
+            const newPrefix = await generateUniquePrefix();
+            currentLocalInfo.invoicePrefix = newPrefix;
+            setLocalInfo(currentLocalInfo);
           }
 
-          // 2. Save using userId as doc ID
           await setDoc(doc(db, "businessInfo", user.uid), {
-            ...localInfo,
+            ...currentLocalInfo,
             userId: user.uid,
             updatedAt: serverTimestamp()
           });
           
-          // 3. If prefix changed, update existing invoices
-          if (localInfo.invoicePrefix && businessInfo?.invoicePrefix && localInfo.invoicePrefix !== businessInfo.invoicePrefix) {
+          if (currentLocalInfo.invoicePrefix && businessInfo?.invoicePrefix && currentLocalInfo.invoicePrefix !== businessInfo.invoicePrefix) {
             const oldPrefix = businessInfo.invoicePrefix;
-            const newPrefix = localInfo.invoicePrefix;
+            const newPrefix = currentLocalInfo.invoicePrefix;
             
-            // Update local state first for immediate UI response
             const updatedLocalInvoices = savedInvoices.map(inv => {
               if (inv.serialNumber && inv.serialNumber.startsWith(oldPrefix)) {
                 return {
@@ -2912,32 +2954,30 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
             });
             setSavedInvoices(updatedLocalInvoices);
 
-            // Update in Firestore
             const invoicesToUpdate = updatedLocalInvoices.filter((inv, idx) => inv.serialNumber !== savedInvoices[idx].serialNumber);
             for (const inv of invoicesToUpdate) {
               await updateDoc(doc(db, "invoices", inv.id!), { serialNumber: inv.serialNumber });
             }
           }
 
-          setBusinessInfo({ ...localInfo, id: user.uid });
+          setBusinessInfo({ ...currentLocalInfo, id: user.uid });
           setInvoiceData(prev => ({
             ...prev,
-            serviceProvider: localInfo.name || prev.serviceProvider,
-            phoneNumber: localInfo.phone || prev.phoneNumber,
-            logo: localInfo.logo || prev.logo,
-            activityIndex: localInfo.activityIndex ?? prev.activityIndex,
-            customActivity: localInfo.customActivity || prev.customActivity,
-            serialNumber: prev.id ? prev.serialNumber : `${localInfo.invoicePrefix || 'INV'}-${String((savedInvoices.length + 1)).padStart(4, '0')}`
+            serviceProvider: currentLocalInfo.name || prev.serviceProvider,
+            phoneNumber: currentLocalInfo.phone || prev.phoneNumber,
+            logo: currentLocalInfo.logo || prev.logo,
+            activityIndex: currentLocalInfo.activityIndex ?? prev.activityIndex,
+            customActivity: currentLocalInfo.customActivity || prev.customActivity,
+            serialNumber: prev.id ? prev.serialNumber : `${currentLocalInfo.invoicePrefix || 'INV'}-${String((savedInvoices.length + 1)).padStart(4, '0')}`
           }));
           alert(lang === 'ar' ? 'تم حفظ البيانات بنجاح' : 'Data saved successfully');
         } catch (err) {
           console.error("Save profile error:", err);
         }
       } else {
-        // Handle guest mode prefix update
-        if (localInfo.invoicePrefix && businessInfo?.invoicePrefix && localInfo.invoicePrefix !== businessInfo.invoicePrefix) {
+        if (currentLocalInfo.invoicePrefix && businessInfo?.invoicePrefix && currentLocalInfo.invoicePrefix !== businessInfo.invoicePrefix) {
           const oldPrefix = businessInfo.invoicePrefix;
-          const newPrefix = localInfo.invoicePrefix;
+          const newPrefix = currentLocalInfo.invoicePrefix;
           
           const updatedLocalInvoices = savedInvoices.map(inv => {
             if (inv.serialNumber && inv.serialNumber.startsWith(oldPrefix)) {
@@ -2952,16 +2992,16 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
           localStorage.setItem('gn_invoice_history', JSON.stringify(updatedLocalInvoices));
         }
 
-        localStorage.setItem('gn_business_info', JSON.stringify(localInfo));
-        setBusinessInfo(localInfo);
+        localStorage.setItem('gn_business_info', JSON.stringify(currentLocalInfo));
+        setBusinessInfo(currentLocalInfo);
         setInvoiceData(prev => ({
           ...prev,
-          serviceProvider: localInfo.name || prev.serviceProvider,
-          phoneNumber: localInfo.phone || prev.phoneNumber,
-          logo: localInfo.logo || prev.logo,
-          activityIndex: localInfo.activityIndex ?? prev.activityIndex,
-          customActivity: localInfo.customActivity || prev.customActivity,
-          serialNumber: prev.id ? prev.serialNumber : `${localInfo.invoicePrefix || 'INV'}-${String((savedInvoices.length + 1)).padStart(4, '0')}`
+          serviceProvider: currentLocalInfo.name || prev.serviceProvider,
+          phoneNumber: currentLocalInfo.phone || prev.phoneNumber,
+          logo: currentLocalInfo.logo || prev.logo,
+          activityIndex: currentLocalInfo.activityIndex ?? prev.activityIndex,
+          customActivity: currentLocalInfo.customActivity || prev.customActivity,
+          serialNumber: prev.id ? prev.serialNumber : `${currentLocalInfo.invoicePrefix || 'INV'}-${String((savedInvoices.length + 1)).padStart(4, '0')}`
         }));
         alert(lang === 'ar' ? 'تم الحفظ محلياً' : 'Saved locally');
       }
@@ -3025,21 +3065,12 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
               />
             </div>
             <div className={lang === 'ar' ? 'order-3' : ''}>
-              <Label>{lang === 'en' ? 'Invoice Prefix' : 'بادئة الفاتورة'}</Label>
-              <Input 
-                value={localInfo.invoicePrefix || ''} 
-                onChange={(e) => {
-                  const val = e.target.value.toUpperCase();
-                  // Only English letters and max 6 characters
-                  if (/^[A-Z]*$/.test(val) && val.length <= 6) {
-                    setLocalInfo(prev => ({ ...prev, invoicePrefix: val }));
-                  }
-                }}
-                placeholder="INV, GN..."
-                maxLength={6}
-              />
+              <Label>{lang === 'en' ? 'Invoice ID Prefix' : 'رمز بادئة الفواتير'}</Label>
+              <div className="flex h-11 w-full rounded-lg border border-[#E5E5E5] bg-slate-50 dark:bg-white/5 dark:border-[#333333] dark:text-white px-3 py-2 text-sm items-center font-black">
+                {localInfo.invoicePrefix || (lang === 'ar' ? 'سيتم توليده تلقائياً' : 'Will be auto-generated')}
+              </div>
               <p className="text-[10px] text-slate-400 mt-1">
-                {lang === 'ar' ? 'أحرف إنجليزية فقط، بحد أقصى 6 أحرف' : 'English letters only, max 6 characters'}
+                {lang === 'ar' ? 'يتم توليده عشوائياً لضمان تميز فواتيرك' : 'Automatically generated to ensure unique invoices'}
               </p>
             </div>
             <div className="md:col-span-2 text-right">
