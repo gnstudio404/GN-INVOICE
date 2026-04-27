@@ -78,6 +78,10 @@ import {
   LogOut
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import Sidebar from './components/Sidebar';
+import TopNav from './components/TopNav';
+import ClientsPage from './components/ClientsPage';
+import ClientDetailPage from './components/ClientDetailPage';
 import confetti from 'canvas-confetti';
 import { QRCodeSVG } from 'qrcode.react';
 import { 
@@ -524,12 +528,46 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
   const [showAddContact, setShowAddContact] = useState(false);
   const [editingContactId, setEditingContactId] = useState<string | null>(null);
   const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [newContactData, setNewContactData] = useState({ name: '', phone: '', email: '', address: '' });
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [activeSuggestionField, setActiveSuggestionField] = useState<string | null>(null);
   const [activeItemIndex, setActiveItemIndex] = useState<number | null>(null);
   const [filteredSuggestions, setFilteredSuggestions] = useState<string[]>([]);
   const t = translations[lang];
+
+  const monthlyCollections = useMemo(() => {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    
+    return payments.reduce((sum, p) => {
+      let paymentDate: Date;
+      if (p.date?.toDate) {
+        paymentDate = p.date.toDate();
+      } else {
+        paymentDate = new Date(p.date);
+      }
+      
+      if (paymentDate >= startOfMonth) {
+        return sum + (Number(p.amount) || 0);
+      }
+      return sum;
+    }, 0);
+  }, [payments]);
+
+  // Map existing contacts to the format needed for the new UI
+  const mappedClients = useMemo(() => {
+    return contactsWithAggregatedDebt.map(c => ({
+      id: c.id || '',
+      name: c.name,
+      phone: c.phone || '',
+      location: c.address || '',
+      debt: c.aggregatedDebt || 0,
+      status: (c.aggregatedDebt || 0) > 10000 ? 'critical' : (c.aggregatedDebt || 0) > 0 ? 'debt' : 'regular' as any,
+      type: (c.name.includes('شركة') || c.name.includes('مؤسسة')) ? 'company' : 'individual' as any,
+      lastActivity: c.totalInvoices ? `${c.totalInvoices} ${lang === 'ar' ? 'فواتير' : 'invoices'}` : undefined,
+    }));
+  }, [contactsWithAggregatedDebt, lang]);
 
   const [invoiceData, setInvoiceData] = useState<InvoiceData>({
     invoiceTitle: translations[lang].invoiceTitleDefault,
@@ -2942,7 +2980,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
   return (
     <div 
       className={cn(
-        "min-h-screen bg-surface-bg dark:bg-[#060B16] text-on-surface dark:text-[#E2E8F0] transition-colors duration-300 selection:bg-brand-primary selection:text-white pb-10", 
+        "min-h-screen bg-slate-50 dark:bg-[#060B16] text-on-surface dark:text-[#E2E8F0] transition-colors duration-300 selection:bg-brand-primary selection:text-white pb-10", 
         lang === 'ar' ? 'font-arabic' : 'font-sans'
       )} 
       dir={lang === 'ar' ? 'rtl' : 'ltr'}
@@ -2950,50 +2988,20 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
       {showDebug && <DebugPanel />}
       
       {/* Sidebar Navigation */}
-      <aside className={cn(
-        "no-print fixed top-0 bottom-0 w-64 bg-white dark:bg-slate-900 border-slate-200 dark:border-white/5 z-50 transition-all duration-300 hidden lg:flex flex-col shadow-xl",
-        lang === 'ar' ? 'right-0 border-l' : 'left-0 border-r'
-      )}>
-        <div className="p-8 flex flex-col items-center border-b border-slate-50 dark:border-white/5">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-primary text-white shadow-lg shadow-brand-primary/20 mb-4">
-            <FileText size={28} strokeWidth={2.5} />
-          </div>
-          <span className="text-2xl font-black tracking-tighter text-brand-primary">{t.title}</span>
-          <span className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-widest">{lang === 'en' ? 'Invoice Master' : 'نظام إدارة الفواتير'}</span>
-        </div>
-
-        <nav className="flex-1 p-4 space-y-2 overflow-y-auto mt-6">
-          <SidebarNavItem icon={<LayoutDashboard size={20} />} label={t.dashboard} active={activeTab === 'dashboard'} onClick={() => { setActiveTab('dashboard'); setIsPreviewMode(false); }} />
-          <SidebarNavItem icon={<FileText size={20} />} label={lang === 'en' ? 'Invoices' : 'الفواتير'} active={activeTab === 'history'} onClick={() => { setActiveTab('history'); setIsPreviewMode(false); }} />
-          <SidebarNavItem icon={<Users size={20} />} label={t.clients} active={activeTab === 'contacts'} onClick={() => { setActiveTab('contacts'); setIsPreviewMode(false); }} />
-          <SidebarNavItem icon={<Wallet size={20} />} label={lang === 'en' ? 'Payments' : 'المدفوعات'} active={activeTab === 'payments'} onClick={() => { setActiveTab('payments'); setIsPreviewMode(false); }} />
-          <SidebarNavItem icon={<ArrowDownLeft size={20} />} label={lang === 'en' ? 'Expenses' : 'المصاريف'} active={activeTab === 'expenses'} onClick={() => { setActiveTab('expenses'); setIsPreviewMode(false); }} />
-          {isSuperAdmin && (
-            <SidebarNavItem 
-              icon={<Users size={20} className="text-brand-primary" />} 
-              label={lang === 'en' ? 'Subscribers' : 'المشتركين'} 
-              active={activeTab === 'subscribers'} 
-              onClick={() => { setActiveTab('subscribers'); setIsPreviewMode(false); }} 
-            />
-          )}
-        </nav>
-
-        <div className="p-6 border-t border-slate-50 dark:border-white/5 space-y-2">
-          <button 
-            onClick={() => { setActiveTab('invoices'); setIsPreviewMode(false); }}
-            className="w-full bg-brand-primary text-white py-4 rounded-2xl font-black text-sm mb-4 hover:shadow-lg shadow-brand-primary/20 transition-all active:scale-95 flex items-center justify-center gap-2"
-          >
-            <Plus size={18} />
-            {lang === 'en' ? 'New Invoice' : 'فاتورة جديدة'}
-          </button>
-          <SidebarNavItem icon={<Settings size={20} />} label={lang === 'en' ? 'Settings' : 'الإعدادات'} active={activeTab === 'profile'} onClick={() => { setActiveTab('profile'); setIsPreviewMode(false); }} />
-          <SidebarNavItem icon={<LogOut size={20} />} label={t.logout} active={false} onClick={handleLogout} className="text-red-500 hover:bg-red-50 dark:hover:bg-red-500/5" />
-        </div>
-      </aside>
+      <Sidebar 
+        activeTab={activeTab}
+        onTabChange={(tab) => {
+          setActiveTab(tab as any);
+          setIsPreviewMode(false);
+        }}
+        onAddClient={() => setShowAddContact(true)}
+        lang={lang}
+        isSuperAdmin={isSuperAdmin}
+      />
 
       {/* Persistence Notice (Sticky overlay) */}
       {!user && (
-        <div className={cn("no-print fixed top-0 left-0 right-0 z-[100] bg-amber-50 dark:bg-amber-900/10 border-b border-amber-200 dark:border-amber-900/10 p-2 text-center", lang === 'ar' ? 'lg:mr-64' : 'lg:ml-64')}>
+        <div className={cn("no-print fixed top-0 left-0 right-0 z-[100] bg-amber-50 dark:bg-amber-900/10 border-b border-amber-200 dark:border-amber-900/10 p-2 text-center shadow-lg backdrop-blur-md", lang === 'ar' ? 'lg:mr-64' : 'lg:ml-64')}>
           <p className="text-[10px] md:text-sm font-bold text-amber-700 dark:text-amber-400 flex items-center justify-center gap-2">
             <CloudOff size={14} />
             {lang === 'en' 
@@ -3006,67 +3014,23 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
 
       {/* Main Content Area */}
       <div className={cn(
-        "transition-all duration-300",
+        "transition-all duration-300 min-h-screen",
         lang === 'ar' ? 'lg:mr-64' : 'lg:ml-64'
       )}>
         {/* Top bar Header */}
-        <header className="no-print sticky top-0 z-40 bg-white/80 dark:bg-[#060B16]/80 backdrop-blur-md border-b border-slate-100 dark:border-white/5">
-          <div className="px-6 h-16 flex items-center justify-between">
-            {/* Mobile Nav Toggle / Search */}
-            <div className="flex items-center gap-4 flex-1">
-              <div className="lg:hidden p-2 rounded-xl bg-slate-100 dark:bg-white/5">
-                <FileText size={24} className="text-brand-primary" />
-              </div>
-              <div className="relative max-w-md w-full hidden md:block">
-                <Search size={18} className={cn("absolute top-1/2 -translate-y-1/2 text-slate-400", lang === 'ar' ? 'right-3' : 'left-3')} />
-                <input 
-                  type="text" 
-                  placeholder={lang === 'en' ? 'Search records...' : 'بحث في السجلات...'} 
-                  className={cn("w-full py-2 bg-slate-50/50 dark:bg-white/5 border border-slate-100 dark:border-white/10 rounded-xl text-sm focus:ring-2 focus:ring-brand-primary/20 outline-none transition-all", lang === 'ar' ? 'pr-10 pl-4' : 'pl-10 pr-4')}
-                />
-              </div>
-            </div>
-
-            {/* Profile & Tools */}
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1">
-                <Button variant="ghost" size="icon" onClick={() => setIsDarkMode(!isDarkMode)} className="h-10 w-10 border border-transparent hover:border-slate-100 dark:hover:border-white/10 rounded-full">
-                  {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
-                </Button>
-                <Button variant="ghost" size="icon" onClick={() => setLang(lang === 'en' ? 'ar' : 'en')} className="h-10 w-10 border border-transparent hover:border-slate-100 dark:hover:border-white/10 rounded-full font-black text-xs">
-                  {lang === 'en' ? 'AR' : 'EN'}
-                </Button>
-                {user && (
-                  <Button variant="ghost" size="icon" onClick={() => setShowDebug(!showDebug)} className="h-10 w-10 border border-transparent hover:border-slate-100 dark:hover:border-white/10 rounded-full text-brand-primary/60">
-                    <Settings size={20} />
-                  </Button>
-                )}
-              </div>
-
-              <div className="h-8 w-[1px] bg-slate-100 dark:bg-white/10 mx-2" />
-
-              {user ? (
-                <div className="flex items-center gap-3 cursor-pointer group px-2 py-1 rounded-xl hover:bg-slate-50 dark:hover:bg-white/5 transition-all">
-                  <div className="text-right hidden sm:block">
-                    <p className="text-xs font-black leading-tight">{user.displayName || user.email?.split('@')[0]}</p>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase">{lang === 'en' ? 'Account Admin' : 'مدير الحساب'}</p>
-                  </div>
-                  {user.photoURL ? (
-                    <img src={user.photoURL} alt="User" className="w-10 h-10 rounded-full border-2 border-brand-primary/10 group-hover:border-brand-primary transition-all" referrerPolicy="no-referrer" />
-                  ) : (
-                    <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-white/5 flex items-center justify-center font-black text-brand-primary">
-                      {user.email?.charAt(0).toUpperCase()}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <Button size="sm" onClick={() => navigate('/login')} className="rounded-xl bg-brand-primary font-black text-xs px-4">
-                  {t.login}
-                </Button>
-              )}
-            </div>
-          </div>
-        </header>
+        <TopNav 
+          title={
+            activeTab === 'contacts' ? (lang === 'ar' ? 'إدارة العملاء' : 'Clients Management') : 
+            activeTab === 'subscribers' ? (lang === 'ar' ? 'إدارة المشتركين' : 'Subscribers') :
+            (lang === 'ar' ? t.dashboard : t.dashboard)
+          }
+          user={user}
+          lang={lang}
+          setLang={setLang}
+          isDarkMode={isDarkMode}
+          setIsDarkMode={setIsDarkMode}
+          onLogout={handleLogout}
+        />
 
         {/* Global Persistence Notification if syncing */}
         {user && hasLocalData && (
@@ -3084,7 +3048,46 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
 
         <main className="px-6 py-10 md:px-10 lg:py-12">
           <AnimatePresence mode="wait">
-          {activeTab === 'invoices' ? (
+          {activeTab === 'contacts' ? (
+            <motion.div
+              key={selectedClientId ? `client-detail-${selectedClientId}` : 'contacts-list'}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+            >
+              {selectedClientId ? (
+                <ClientDetailPage
+                  clientId={selectedClientId}
+                  clients={mappedClients as any}
+                  invoices={savedInvoices}
+                  payments={payments}
+                  onBack={() => setSelectedClientId(null)}
+                  lang={lang}
+                />
+              ) : (
+                <ClientsPage 
+                  clients={mappedClients as any}
+                  monthlyCollections={monthlyCollections}
+                  onAddClient={() => setShowAddContact(true)}
+                  onSelectClient={(id) => setSelectedClientId(id)}
+                  onEditClient={(client: any) => {
+                    setEditingContactId(client.id);
+                    setNewContactData({
+                      name: client.name,
+                      phone: client.phone,
+                      email: '', // Not in mapped client yet
+                      address: client.location
+                    });
+                    setShowAddContact(true);
+                  }}
+                  onDeleteClient={(id: string) => {
+                    setDeletingId(id);
+                    setShowDeleteConfirm(true);
+                  }}
+                />
+              )}
+            </motion.div>
+          ) : activeTab === 'invoices' ? (
             !isPreviewMode ? (
             <motion.div
               key="form"
