@@ -112,13 +112,9 @@ const LandingPage: React.FC<LandingPageProps> = ({ lang, setLang, isDarkMode, se
       <nav className="fixed top-0 w-full z-50 border-b border-slate-200 dark:border-white/10 bg-white/80 dark:bg-[#0F172A]/80 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-                <FileText className="text-white w-5 h-5" />
-              </div>
-              <span className="text-xl font-bold tracking-tight text-[#0B1220] dark:text-[#E2E8F0]">
-                GN Invoice
-              </span>
+            <div className="flex items-center gap-3">
+              <img src="/logo.png" alt="Logo" className="h-10 w-auto object-contain dark:hidden" />
+              <img src="/logo-dark.png" alt="Logo" className="h-10 w-auto object-contain hidden dark:block" />
             </div>
             
             <div className="flex items-center gap-2 sm:gap-4">
@@ -201,10 +197,8 @@ const LandingPage: React.FC<LandingPageProps> = ({ lang, setLang, isDarkMode, se
                 {/* Mockup Header */}
                 <div className="p-8 border-b border-slate-100 dark:border-white/5 flex justify-between items-start">
                   <div className={cn("text-left", lang === 'ar' && "text-right")}>
-                    <div className="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center mb-4">
-                      <FileText className="text-white w-6 h-6" />
-                    </div>
-                    <h3 className="text-xl font-bold dark:text-[#E2E8F0]">GN Invoice</h3>
+                    <img src="/logo.png" alt="Logo" className="h-14 w-auto object-contain mb-4 dark:hidden" />
+                    <img src="/logo-dark.png" alt="Logo" className="h-14 w-auto object-contain mb-4 hidden dark:block" />
                     <p className="text-sm text-slate-500 dark:text-[#94A3B8]">Professional Invoicing</p>
                   </div>
                   <div className="text-right">
@@ -288,17 +282,13 @@ const LandingPage: React.FC<LandingPageProps> = ({ lang, setLang, isDarkMode, se
         {/* Footer */}
         <footer className="py-12 border-t border-slate-200 dark:border-white/10 bg-[#F8FAFC] dark:bg-[#060B16]">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-            <div className="flex items-center justify-center gap-2 mb-4">
-              <div className="w-6 h-6 bg-blue-600 rounded flex items-center justify-center">
-                <FileText className="text-white w-4 h-4" />
-              </div>
-              <span className="text-lg font-bold tracking-tight text-[#0B1220] dark:text-[#E2E8F0]">
-                GN Invoice
-              </span>
+            <div className="flex items-center justify-center gap-3 mb-4">
+              <img src="/logo.png" alt="Logo" className="h-8 w-auto object-contain dark:hidden" />
+              <img src="/logo-dark.png" alt="Logo" className="h-8 w-auto object-contain hidden dark:block" />
             </div>
             <p className="text-slate-500 dark:text-[#94A3B8] text-sm">
               {t.footerDesc} <br />
-              © 2026 GN Invoice. {t.rights}
+              © 2026 {t.rights}
             </p>
           </div>
         </footer>

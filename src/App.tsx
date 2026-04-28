@@ -110,7 +110,7 @@ import { cn } from './lib/utils';
 
 const translations = {
   en: {
-    title: "GN Invoice",
+    title: " ",
     subtitle: "PREMIUM INVOICE BUILDER",
     heroTitle: "Generate Professional Invoices.",
     heroDesc: "Create elegant, high-end electronic invoices for your online services in seconds.",
@@ -156,7 +156,7 @@ const translations = {
     subtotal: "Subtotal",
     totalAmount: "Total Amount",
     thankYou: "Thank you for your business",
-    poweredBy: "Powered by GN Invoice Premium",
+    poweredBy: "Professional Billing System",
     downloadPng: "Download PNG",
     history: "Invoice History",
     saveToHistory: "Save to History",
@@ -217,7 +217,7 @@ const translations = {
     ]
   },
   ar: {
-    title: "GN Invoice",
+    title: " ",
     subtitle: "منشئ فواتير متميز",
     heroTitle: "أنشئ فواتير احترافية.",
     heroDesc: "أنشئ فواتير إلكترونية أنيقة وعالية الجودة لخدماتك عبر الإنترنت في ثوانٍ.",
@@ -263,7 +263,7 @@ const translations = {
     subtotal: "المجموع الفرعي",
     totalAmount: "المبلغ الإجمالي",
     thankYou: "شكراً لتعاملكم معنا",
-    poweredBy: "بدعم من جي إن إنفويس بريميوم",
+    poweredBy: "نظام فوترة احترافي متكامل",
     downloadPng: "تحميل صورة PNG",
     history: "سجل الفواتير",
     saveToHistory: "حفظ في السجل",
@@ -3489,7 +3489,11 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                {localInfo.logo ? (
                  <img src={localInfo.logo} alt="Logo" className="w-full h-full object-contain p-2" />
                ) : (
-                 <ImageIcon className="text-slate-400 group-hover:scale-110 transition-transform" size={40} />
+                 <div className="flex flex-col items-center gap-1 group-hover:scale-105 transition-transform">
+                   <img src="/logo.png" alt="Logo" className="h-12 w-auto object-contain dark:hidden opacity-50" />
+                   <img src="/logo-dark.png" alt="Logo" className="h-12 w-auto object-contain hidden dark:block opacity-50" />
+                   <ImageIcon className="text-slate-400" size={24} />
+                 </div>
                )}
                <input type="file" ref={profileFileRef} className="hidden" accept="image/*" onChange={handleProfileLogo} />
              </div>
@@ -4314,13 +4318,14 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                         <img 
                           src={invoiceData.logo} 
                           alt="Business Logo" 
-                          className="h-16 w-auto object-contain mb-6"
+                          className="h-40 w-auto object-contain mb-6"
                           referrerPolicy="no-referrer"
                           crossOrigin="anonymous"
                         />
                       ) : (
-                        <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#F5F5F5] dark:bg-[#060B16] text-[#CCCCCC]">
-                          <ImageIcon size={32} />
+                        <div className="mb-6 flex flex-col items-start">
+                          <img src="/logo.png" alt="App Logo" className="h-12 w-auto object-contain dark:hidden" />
+                          <img src="/logo-dark.png" alt="App Logo" className="h-12 w-auto object-contain hidden dark:block" />
                         </div>
                       )}
                       <h2 className={cn("text-xs font-bold uppercase text-[#999999] dark:text-[#94A3B8] mb-1", lang === 'en' && "tracking-[0.2em]")}>{t.businessActivity}</h2>
@@ -4486,9 +4491,9 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                 </div>
               </div>
 
-              <div className="flex items-center justify-center gap-2 text-sm text-[#999999]">
-                <Briefcase size={18} />
-                <span>{t.poweredBy}</span>
+              <div className="flex items-center justify-center gap-3 text-sm text-[#999999]">
+                <img src="/logo.png" alt="Logo" className="h-8 w-auto object-contain dark:hidden opacity-60" />
+                <img src="/logo-dark.png" alt="Logo" className="h-8 w-auto object-contain hidden dark:block opacity-60" />
               </div>
             </div>
           </motion.div>

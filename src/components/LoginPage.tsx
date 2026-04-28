@@ -44,7 +44,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ lang, isDarkMode }) => {
       title: "Welcome Back",
       signupTitle: "Create Your Account",
       subtitle: "Login to sync your invoices across all your devices securely.",
-      signupSubtitle: "Join GN Invoice to manage your professional invoices anywhere.",
+      signupSubtitle: "Manage your professional invoices anywhere with our secure platform.",
       loginBtn: "Continue with Google",
       backBtn: "Back",
       feature1: "Automatic Cloud Sync",
@@ -71,7 +71,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ lang, isDarkMode }) => {
       title: "مرحباً بك مجدداً",
       signupTitle: "أنشئ حسابك الجديد",
       subtitle: "سجل دخولك لمزامنة فواتيرك عبر جميع أجهزتك بأمان.",
-      signupSubtitle: "انضم إلى GN Invoice لإدارة فواتيرك الاحترافية في أي مكان.",
+      signupSubtitle: "أدر فواتيرك الاحترافية في أي مكان من خلال منصتنا الآمنة.",
       loginBtn: "المتابعة باستخدام جوجل",
       backBtn: "عودة",
       feature1: "مزامنة سحابية تلقائية",
@@ -208,22 +208,20 @@ const LoginPage: React.FC<LoginPageProps> = ({ lang, isDarkMode }) => {
         <div className="absolute top-0 right-0 w-96 h-96 bg-blue-500/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-[120px]" />
         <div className="absolute bottom-0 left-0 w-96 h-96 bg-purple-500/10 rounded-full translate-y-1/2 -translate-x-1/2 blur-[120px]" />
         
-        <Link 
-          to="/" 
-          className="flex items-center gap-3 text-white group"
-        >
-          <div className="h-12 w-12 flex items-center justify-center bg-white rounded-2xl text-[#1A1A1A] shadow-xl shadow-white/10 group-hover:scale-110 transition-transform">
-            <FileText size={28} strokeWidth={2.5} />
-          </div>
-          <span className="text-2xl font-black tracking-widest uppercase group-hover:tracking-[0.25em] transition-all duration-300">
-            GN Invoice
-          </span>
-        </Link>
+        <div className="relative z-10 flex flex-col gap-8">
+          <div className="flex flex-col gap-2">
+            <Link 
+              to="/" 
+              className="flex items-center text-white group"
+            >
+              <img src="/logo-dark.png" alt="Logo" className="h-10 w-auto object-contain group-hover:scale-105 transition-transform" />
+            </Link>
 
-        <div>
-          <h2 className="text-5xl lg:text-6xl font-black text-white leading-[1.1] mb-10">
-            {isSignup ? t.signupTitle : t.title}
-          </h2>
+            <h2 className="text-4xl lg:text-5xl font-black text-white leading-[1.1]">
+              {isSignup ? t.signupTitle : t.title}
+            </h2>
+          </div>
+
           <div className="space-y-8">
             <div className="flex items-center gap-5 text-white/70">
               <div className="h-14 w-14 flex items-center justify-center rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-400">
@@ -255,7 +253,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ lang, isDarkMode }) => {
           </div>
         </div>
 
-        <p className="text-white/20 text-[11px] font-bold uppercase tracking-[0.4em]">
+        <p className="text-white/20 text-[11px] font-bold uppercase tracking-[0.4em] relative z-10">
           {t.footer}
         </p>
       </div>

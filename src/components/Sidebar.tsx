@@ -60,23 +60,14 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, onAddClient, 
           ? cn("right-0 border-l", isOpen ? "translate-x-0" : "translate-x-full lg:translate-x-0") 
           : cn("left-0 border-r", isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0")
       )}>
-        <div className="p-6 border-b border-slate-100 dark:border-white/10">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-primary-container flex items-center justify-center text-white shadow-lg shadow-primary/20">
-              <Receipt size={24} />
-            </div>
-            <div>
-              <h1 className="text-xl font-black text-slate-900 dark:text-white leading-tight">
-                {isAr ? 'نظام الفواتير' : 'Invoicing Pro'}
-              </h1>
-              <p className="text-[10px] text-slate-400 dark:text-slate-500 font-black uppercase tracking-widest">
-                {isAr ? 'إدارة الأعمال' : 'Business Management'}
-              </p>
-            </div>
+        <div className="py-2 px-2 border-b border-slate-100 dark:border-white/10 flex justify-center items-center">
+          <div className="w-full max-w-[140px] flex justify-center">
+            <img src="/logo.png" alt="Logo" className="w-full h-auto max-h-12 object-contain dark:hidden" />
+            <img src="/logo-dark.png" alt="Logo" className="w-full h-auto max-h-12 object-contain hidden dark:block" />
           </div>
         </div>
 
-        <nav className="flex-1 px-4 py-8 space-y-2">
+        <nav className="flex-1 px-4 py-4 space-y-2">
           {menuItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
