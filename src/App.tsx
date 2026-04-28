@@ -2702,28 +2702,28 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                  <div 
                    key={inv.id} 
                    onClick={() => handleViewInvoice(inv)}
-                   className="bg-white dark:bg-white/5 border border-slate-100 dark:border-white/10 p-5 rounded-3xl flex items-center justify-between group hover:border-brand-primary/30 transition-all cursor-pointer"
+                   className="bg-white dark:bg-white/5 border border-slate-100 dark:border-white/10 p-4 md:p-5 rounded-3xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 group hover:border-brand-primary/30 transition-all cursor-pointer"
                  >
                    <div className="flex items-center gap-5">
-                     <div className="w-14 h-14 rounded-2xl bg-slate-50 dark:bg-white/5 flex items-center justify-center text-slate-400 group-hover:bg-brand-primary/10 group-hover:text-brand-primary transition-all">
-                       <FileText size={24} />
+                     <div className="w-12 h-12 md:w-14 md:h-14 rounded-2xl bg-slate-50 dark:bg-white/5 flex items-center justify-center text-slate-400 group-hover:bg-brand-primary/10 group-hover:text-brand-primary transition-all shrink-0">
+                       <FileText size={20} className="md:w-6 md:h-6" />
                      </div>
                      <div>
-                       <h4 className="font-black text-sm uppercase tracking-tight text-on-surface dark:text-white">{inv.invoiceTitle || t.invoiceTitleDefault}</h4>
-                       <p className="text-[10px] text-slate-400 font-bold">{inv.clientName} • {inv.savedAt ? new Date(inv.savedAt).toLocaleDateString() : ''}</p>
+                       <h4 className="font-black text-sm uppercase tracking-tight text-on-surface dark:text-white truncate">{inv.invoiceTitle || t.invoiceTitleDefault}</h4>
+                       <p className="text-[10px] text-slate-400 font-bold truncate">{inv.clientName} • {inv.savedAt ? new Date(inv.savedAt).toLocaleDateString() : ''}</p>
                      </div>
                    </div>
-                   <div className="flex items-center gap-10">
+                   <div className="flex items-center justify-between sm:justify-end gap-3 md:gap-10 border-t sm:border-0 pt-3 sm:pt-0">
                      <div className={cn(
-                       "px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest",
+                       "px-3 md:px-4 py-1.5 rounded-full text-[9px] md:text-[10px] font-black uppercase tracking-widest",
                        inv.status === 'paid' ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-brand-tertiary/10 text-brand-tertiary border border-brand-tertiary/20"
                      )}>
                         {inv.status === 'paid' ? (lang === 'en' ? 'Paid' : 'مدفوعة') : (lang === 'en' ? 'Pending' : 'معلقة')}
                      </div>
-                     <div className="text-left w-24">
-                       <p className="text-xl font-black text-on-surface dark:text-white">{t.currencySymbol}{(inv.totalAmount || 0).toLocaleString()}</p>
+                     <div className="text-left md:w-24">
+                       <p className="text-lg md:text-xl font-black text-on-surface dark:text-white whitespace-nowrap">{t.currencySymbol}{(inv.totalAmount || 0).toLocaleString()}</p>
                      </div>
-                     <ChevronRight size={18} className="text-slate-200 group-hover:text-brand-primary transition-all" />
+                     <ChevronRight size={18} className={cn("text-slate-200 group-hover:text-brand-primary transition-all hidden md:block", lang === 'ar' && "rotate-180")} />
                    </div>
                  </div>
                ))}
