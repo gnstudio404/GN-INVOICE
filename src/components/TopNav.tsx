@@ -105,7 +105,7 @@ const TopNav: React.FC<TopNavProps> = ({
           <div className="flex items-center gap-1 md:gap-3 cursor-pointer group p-1.5 rounded-2xl hover:bg-slate-50 dark:hover:bg-white/5 transition-all border border-transparent hover:border-slate-100 dark:hover:border-white/10">
             {user?.photoURL ? (
               <div className="w-10 h-10 rounded-xl overflow-hidden shadow-sm">
-                <img src={user.photoURL} alt="Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                <img src={user.photoURL || null} alt="Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
               </div>
             ) : (
               <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary font-black">

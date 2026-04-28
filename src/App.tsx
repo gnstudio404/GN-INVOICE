@@ -2199,7 +2199,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     }, 800);
   };
 
-  const handleNewInvoice = () => {
+  const handleNewInvoice = async () => {
     // Generate serial number for the new invoice
     const prefix = businessInfo?.invoicePrefix || 'INV';
     const lastSerial = savedInvoices.length > 0 
@@ -2213,19 +2213,47 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
       : 0;
     const serialNumber = `${prefix}-${String(lastSerial + 1).padStart(4, '0')}`;
 
-    setInvoiceData({
+    const newInvoice: InvoiceData = {
       invoiceTitle: translations[lang].invoiceTitleDefault,
       serialNumber,
-      serviceProvider: invoiceData.serviceProvider || '',
+      serviceProvider: businessInfo?.name || '',
       clientName: '',
-      activityIndex: invoiceData.activityIndex || 0,
-      customActivity: invoiceData.customActivity || '',
-      logo: invoiceData.logo || null,
-      phoneNumber: invoiceData.phoneNumber || '',
+      activityIndex: businessInfo?.activityIndex || 0,
+      customActivity: businessInfo?.customActivity || '',
+      logo: businessInfo?.logo || null,
+      phoneNumber: '',
       items: [{ id: generateId(), description: '', price: 0 }],
       totalAmount: 0,
-      status: 'pending'
-    });
+      status: 'pending',
+      savedAt: new Date().toISOString()
+    };
+
+    // Auto-save to database if user is logged in
+    if (user) {
+      try {
+        const { id, ...dataToSave } = newInvoice;
+        const docRef = await addDoc(collection(db, "invoices"), {
+          ...dataToSave,
+          userId: user.uid,
+          updatedAt: serverTimestamp()
+        });
+        newInvoice.id = docRef.id;
+        console.log("[Firestore] Auto-saved new invoice draft:", docRef.id);
+      } catch (err) {
+        console.error("Auto-save failed:", err);
+        newInvoice.id = generateId(); // Fallback ID
+      }
+    } else {
+      // Local save for guest
+      newInvoice.id = generateId();
+      setSavedInvoices(prev => {
+        const updated = [newInvoice, ...prev];
+        localStorage.setItem('gn_invoice_history', JSON.stringify(updated));
+        return updated;
+      });
+    }
+
+    setInvoiceData(newInvoice);
     setSaveNameInput('');
     setIsPreviewMode(false);
     setActiveTab('invoices');
@@ -2233,7 +2261,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleCreateInvoiceForClient = (client: any) => {
+  const handleCreateInvoiceForClient = async (client: any) => {
     const prefix = businessInfo?.invoicePrefix || 'INV';
     const lastSerial = savedInvoices.length > 0 
       ? Math.max(...savedInvoices.map(inv => {
@@ -2246,7 +2274,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
       : 0;
     const serialNumber = `${prefix}-${String(lastSerial + 1).padStart(4, '0')}`;
 
-    setInvoiceData({
+    const newInvoice: InvoiceData = {
       invoiceTitle: translations[lang].invoiceTitleDefault,
       serialNumber,
       serviceProvider: businessInfo?.name || '',
@@ -2254,12 +2282,40 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
       activityIndex: businessInfo?.activityIndex || 0,
       customActivity: businessInfo?.customActivity || '',
       logo: businessInfo?.logo || null,
-      phoneNumber: client.phone,
+      phoneNumber: client.phone || '',
       contactId: client.id,
       items: [{ id: generateId(), description: '', price: 0 }],
       totalAmount: 0,
-      status: 'pending'
-    });
+      status: 'pending',
+      savedAt: new Date().toISOString()
+    };
+
+    // Auto-save to database if user is logged in
+    if (user) {
+      try {
+        const { id, ...dataToSave } = newInvoice;
+        const docRef = await addDoc(collection(db, "invoices"), {
+          ...dataToSave,
+          userId: user.uid,
+          updatedAt: serverTimestamp()
+        });
+        newInvoice.id = docRef.id;
+        console.log("[Firestore] Auto-saved new invoice draft:", docRef.id);
+      } catch (err) {
+        console.error("Auto-save failed:", err);
+        newInvoice.id = generateId(); // Fallback ID
+      }
+    } else {
+      // Local save for guest
+      newInvoice.id = generateId();
+      setSavedInvoices(prev => {
+        const updated = [newInvoice, ...prev];
+        localStorage.setItem('gn_invoice_history', JSON.stringify(updated));
+        return updated;
+      });
+    }
+
+    setInvoiceData(newInvoice);
     setSaveNameInput('');
     setIsPreviewMode(false);
     setActiveTab('invoices');
@@ -3037,7 +3093,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
               <tr key={u.uid} className="hover:bg-slate-50/50 dark:hover:bg-white/[0.02] transition-colors">
                 <td className="px-8 py-6">
                   <div className="flex items-center gap-4">
-                    <img src={u.photoURL} alt="" className="w-10 h-10 rounded-full border-2 border-brand-primary" />
+                    <img src={u.photoURL || null} alt="" className="w-10 h-10 rounded-full border-2 border-brand-primary" />
                     <div>
                       <div className="font-black text-sm uppercase tracking-tight">{u.displayName}</div>
                       <div className="text-[10px] text-slate-400 font-bold">{u.email}</div>
@@ -3487,7 +3543,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                className="w-32 h-32 rounded-3xl border-2 border-dashed border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 flex items-center justify-center cursor-pointer overflow-hidden group hover:border-blue-500 transition-all"
              >
                {localInfo.logo ? (
-                 <img src={localInfo.logo} alt="Logo" className="w-full h-full object-contain p-2" />
+                 <img src={localInfo.logo || null} alt="Logo" className="w-full h-full object-contain p-2" />
                ) : (
                  <div className="flex flex-col items-center gap-1 group-hover:scale-105 transition-transform">
                    <img src="/logo.png" alt="Logo" className="h-12 w-auto object-contain dark:hidden opacity-50" />
@@ -4113,7 +4169,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                       {invoiceData.logo ? (
                         <div className="relative h-full w-full p-4">
                           <img 
-                            src={invoiceData.logo} 
+                            src={invoiceData.logo || null} 
                             alt="Logo preview" 
                             className="h-full w-full object-contain"
                             referrerPolicy="no-referrer"
@@ -4316,7 +4372,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                     <div>
                       {invoiceData.logo ? (
                         <img 
-                          src={invoiceData.logo} 
+                          src={invoiceData.logo || null} 
                           alt="Business Logo" 
                           className="h-40 w-auto object-contain mb-6"
                           referrerPolicy="no-referrer"
