@@ -45,7 +45,8 @@ service cloud.firestore {
     function isValidExpense(data) {
       return data.userId == request.auth.uid &&
              data.amount is number &&
-             data.amount >= 0;
+             data.amount >= 0 &&
+             (!('type' in data) || data.type in ['one-time', 'subscription']);
     }
 
     function isValidProduct(data) {

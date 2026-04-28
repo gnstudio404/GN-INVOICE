@@ -72,10 +72,13 @@
       "properties": {
         "userId": { "type": "string" },
         "businessId": { "type": "string" },
-        "category": { "type": "string", "description": "Rent, Materials, Shipping, etc." },
+        "category": { "type": "string", "description": "Rent, Materials, Shipping, Subscriptions, etc." },
         "amount": { "type": "number" },
         "date": { "type": "string", "format": "date-time" },
-        "description": { "type": "string" }
+        "description": { "type": "string" },
+        "type": { "type": "string", "enum": ["one-time", "subscription"] },
+        "startDate": { "type": "string", "format": "date" },
+        "nextRenewalDate": { "type": "string", "format": "date" }
       }
     },
     "product": {

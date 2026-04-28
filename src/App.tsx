@@ -76,7 +76,14 @@ import {
   UserMinus,
   Clock,
   ChartPie,
-  LogOut
+  LogOut,
+  Home,
+  Package,
+  Truck,
+  Megaphone,
+  RefreshCcw,
+  Receipt,
+  Pencil
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Sidebar from './components/Sidebar';
@@ -190,6 +197,12 @@ const translations = {
     saveClient: "Save Client",
     remainingAmount: "Remaining Debt",
     paidAmount: "Paid Amount",
+    expenseType: "Expense Type",
+    oneTime: "One-time",
+    subscription: "Monthly Subscription",
+    startDate: "Start Date",
+    nextRenewal: "Next Renewal",
+    recurring: "Recurring",
     activities: [
       "Software Development",
       "Graphic Design",
@@ -291,6 +304,12 @@ const translations = {
     saveClient: "حفظ العميل",
     remainingAmount: "المديونية المتبقية",
     paidAmount: "المبلغ المدفوع",
+    expenseType: "نوع المصروف",
+    oneTime: "مرة واحدة",
+    subscription: "اشتراك شهري",
+    startDate: "تاريخ البدء",
+    nextRenewal: "التجديد القادم",
+    recurring: "متكرر",
     activities: [
       "تطوير البرمجيات",
       "التصميم الجرافيكي",
@@ -377,6 +396,9 @@ interface Expense {
   amount: number;
   date: any;
   description: string;
+  type?: 'one-time' | 'subscription';
+  startDate?: string;
+  nextRenewalDate?: string;
 }
 
 interface Product {
@@ -465,6 +487,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
   const [products, setProducts] = useState<Product[]>([]);
   const [businessInfo, setBusinessInfo] = useState<BusinessInfo | null>(null);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'invoices' | 'contacts' | 'payments' | 'expenses' | 'profile' | 'subscribers' | 'history'>(() => (localStorage.getItem('gn_active_tab') as any) || 'dashboard');
+  const [searchQuery, setSearchQuery] = useState('');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [invoiceTabMode, setInvoiceTabMode] = useState<'list' | 'editor'>('list');
   const [showSaveSuccess, setShowSaveSuccess] = useState(false);
@@ -496,8 +519,15 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
   }, [contacts, savedInvoices, payments]);
   const [showAddPayment, setShowAddPayment] = useState(false);
   const [showAddExpense, setShowAddExpense] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [newPaymentData, setNewPaymentData] = useState<Omit<Payment, 'id' | 'userId' | 'date'>>({ contactId: '', amount: 0, method: 'cash' });
-  const [newExpenseData, setNewExpenseData] = useState<Omit<Expense, 'id' | 'userId' | 'date'>>({ category: 'Rent', amount: 0, description: '' });
+  const [newExpenseData, setNewExpenseData] = useState<Omit<Expense, 'id' | 'userId' | 'date'>>({ 
+    category: 'Rent', 
+    amount: 0, 
+    description: '',
+    type: 'one-time',
+    startDate: new Date().toISOString().split('T')[0]
+  });
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [lastFirebaseError, setLastFirebaseError] = useState<string | null>(null);
@@ -532,39 +562,6 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
   const [filteredSuggestions, setFilteredSuggestions] = useState<string[]>([]);
   const t = translations[lang];
 
-  const monthlyCollections = useMemo(() => {
-    const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    
-    return payments.reduce((sum, p) => {
-      let paymentDate: Date;
-      if (p.date?.toDate) {
-        paymentDate = p.date.toDate();
-      } else {
-        paymentDate = new Date(p.date);
-      }
-      
-      if (paymentDate >= startOfMonth) {
-        return sum + (Number(p.amount) || 0);
-      }
-      return sum;
-    }, 0);
-  }, [payments]);
-
-  // Map existing contacts to the format needed for the new UI
-  const mappedClients = useMemo(() => {
-    return contactsWithAggregatedDebt.map(c => ({
-      id: c.id || '',
-      name: c.name,
-      phone: c.phone || '',
-      location: c.address || '',
-      debt: c.aggregatedDebt || 0,
-      status: (c.aggregatedDebt || 0) > 10000 ? 'critical' : (c.aggregatedDebt || 0) > 0 ? 'debt' : 'regular' as any,
-      type: (c.name.includes('شركة') || c.name.includes('مؤسسة')) ? 'company' : 'individual' as any,
-      lastActivity: c.totalInvoices ? `${c.totalInvoices} ${lang === 'ar' ? 'فواتير' : 'invoices'}` : undefined,
-    }));
-  }, [contactsWithAggregatedDebt, lang]);
-
   const [invoiceData, setInvoiceData] = useState<InvoiceData>({
     invoiceTitle: translations[lang].invoiceTitleDefault,
     serviceProvider: '',
@@ -586,6 +583,20 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
   const [isDownloadingImage, setIsDownloadingImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const invoiceRef = useRef<HTMLDivElement>(null);
+
+  // Map existing contacts to the format needed for the new UI
+  const allClients = useMemo(() => {
+    return contactsWithAggregatedDebt.map(c => ({
+      id: c.id || '',
+      name: c.name,
+      phone: c.phone || '',
+      location: c.address || '',
+      debt: c.aggregatedDebt || 0,
+      status: (c.aggregatedDebt || 0) > 10000 ? 'critical' : (c.aggregatedDebt || 0) > 0 ? 'debt' : 'regular' as any,
+      type: (c.name.includes('شركة') || c.name.includes('مؤسسة')) ? 'company' : 'individual' as any,
+      lastActivity: c.totalInvoices ? `${c.totalInvoices} ${lang === 'ar' ? 'فواتير' : 'invoices'}` : undefined,
+    }));
+  }, [contactsWithAggregatedDebt, lang]);
 
   // Update title when language changes if it hasn't been edited
   useEffect(() => {
@@ -1653,12 +1664,21 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
   const handleAddExpense = async (data: any) => {
     if (isNaN(data.amount) || data.amount <= 0) return;
 
+    let nextRenewalDate: string | undefined = undefined;
+    if (data.type === 'subscription' && data.startDate) {
+      const start = new Date(data.startDate);
+      const next = new Date(start);
+      next.setDate(next.getDate() + 30);
+      nextRenewalDate = next.toISOString().split('T')[0];
+    }
+
     if (!user) {
       const expense: Expense = {
         id: generateId(),
         ...data,
         amount: parseFloat(data.amount),
-        date: new Date().toISOString()
+        date: new Date().toISOString(),
+        nextRenewalDate
       };
       setExpenses(prev => {
         const updated = [expense, ...prev];
@@ -1673,13 +1693,115 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
         userId: user.uid,
         ...data,
         amount: parseFloat(data.amount),
-        date: serverTimestamp()
+        date: serverTimestamp(),
+        nextRenewalDate
       };
       await addDoc(collection(db, "expenses"), expense);
     } catch (error) {
       console.error("Error adding expense:", error);
     }
   };
+
+  const handleUpdateExpense = async (expenseId: string, data: any) => {
+    if (isNaN(data.amount) || data.amount <= 0) return;
+
+    let nextRenewalDate: string | undefined = undefined;
+    if (data.type === 'subscription' && data.startDate) {
+      const start = new Date(data.startDate);
+      const next = new Date(start);
+      next.setDate(next.getDate() + 30);
+      nextRenewalDate = next.toISOString().split('T')[0];
+    }
+
+    const updates = {
+      ...data,
+      amount: parseFloat(data.amount),
+      nextRenewalDate
+    };
+
+    if (!user) {
+      setExpenses(prev => {
+        const updated = prev.map(e => e.id === expenseId ? { ...e, ...updates } : e);
+        localStorage.setItem('gn_expenses', JSON.stringify(updated));
+        return updated;
+      });
+      return;
+    }
+
+    try {
+      await updateDoc(doc(db, "expenses", expenseId), updates);
+    } catch (error) {
+      console.error("Error updating expense:", error);
+    }
+  };
+
+  // Check for recurring expenses logic
+  useEffect(() => {
+    if (expenses.length === 0) return;
+
+    const checkRenewals = async () => {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      for (const expense of expenses) {
+        if (expense.type === 'subscription' && expense.nextRenewalDate) {
+          const renewalDate = new Date(expense.nextRenewalDate);
+          renewalDate.setHours(0, 0, 0, 0);
+
+          if (today >= renewalDate) {
+            console.log(`Processing renewal for expense: ${expense.description}`);
+            
+            // 1. Record the "new" occurrence as a one-time expense for history
+            const occurrenceData = {
+              description: `${expense.description} (${t.recurring})`,
+              amount: expense.amount,
+              category: expense.category,
+              type: 'one-time'
+            };
+            
+            // 2. Update the original subscription record's nextRenewalDate
+            const next = new Date(renewalDate);
+            next.setDate(next.getDate() + 30);
+            const nextRenewalStr = next.toISOString().split('T')[0];
+
+            if (!user) {
+              setExpenses(prev => {
+                const refreshed = prev.map(e => e.id === expense.id ? { ...e, nextRenewalDate: nextRenewalStr } : e);
+                // Add the history record
+                const historyRecord: Expense = {
+                  id: generateId(),
+                  ...occurrenceData,
+                  type: 'one-time' as const,
+                  date: new Date().toISOString()
+                };
+                const final = [historyRecord, ...refreshed];
+                localStorage.setItem('gn_expenses', JSON.stringify(final));
+                return final;
+              });
+            } else if (expense.id) {
+              try {
+                // Add history record first
+                await addDoc(collection(db, "expenses"), {
+                  ...occurrenceData,
+                  userId: user.uid,
+                  date: serverTimestamp()
+                });
+                // Update subscription
+                await updateDoc(doc(db, "expenses", expense.id), {
+                  nextRenewalDate: nextRenewalStr
+                });
+              } catch (err) {
+                console.error("Error auto-renewing subscription:", err);
+              }
+            }
+          }
+        }
+      }
+    };
+
+    const timer = setTimeout(checkRenewals, 5000); // Check 5s after mount/change
+    return () => clearTimeout(timer);
+  }, [expenses, user, t.recurring]);
 
   const handleDeleteExpense = async (expenseId: string) => {
     console.log("[Expenses] Attempting to delete:", expenseId);
@@ -2477,6 +2599,72 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     });
   }, [payments, savedInvoices, t.invoice]);
 
+  const monthlyCollections = useMemo(() => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    
+    return processedPayments.reduce((sum, p) => {
+      let paymentDate: Date;
+      if (p.date && (p.date as any).toDate) {
+        paymentDate = (p.date as any).toDate();
+      } else {
+        paymentDate = new Date(p.date as string);
+      }
+      
+      if (paymentDate.getMonth() === currentMonth && paymentDate.getFullYear() === currentYear) {
+        return sum + (Number(p.amount) || 0);
+      }
+      return sum;
+    }, 0);
+  }, [processedPayments]);
+
+  // Search filtering logic
+  const filteredClients = useMemo(() => {
+    if (!searchQuery) return allClients;
+    const query = searchQuery.toLowerCase();
+    return allClients.filter(c => 
+      c.name.toLowerCase().includes(query) || 
+      c.phone.toLowerCase().includes(query) ||
+      c.location?.toLowerCase().includes(query)
+    );
+  }, [allClients, searchQuery]);
+
+  const filteredInvoices = useMemo(() => {
+    if (!searchQuery) return savedInvoices;
+    const query = searchQuery.toLowerCase();
+    return savedInvoices.filter(inv => 
+      inv.invoiceTitle.toLowerCase().includes(query) ||
+      inv.clientName.toLowerCase().includes(query) ||
+      (inv.serialNumber && inv.serialNumber.toLowerCase().includes(query)) ||
+      (inv.clientPhone && inv.clientPhone.toLowerCase().includes(query)) ||
+      (inv.serviceProvider && inv.serviceProvider.toLowerCase().includes(query))
+    );
+  }, [savedInvoices, searchQuery]);
+
+  const filteredPayments = useMemo(() => {
+    if (!searchQuery) return processedPayments;
+    const query = searchQuery.toLowerCase();
+    return processedPayments.filter(p => {
+      const contact = contacts.find(c => c.id === p.contactId);
+      return (
+        (contact && contact.name.toLowerCase().includes(query)) ||
+        p.method.toLowerCase().includes(query) ||
+        p.amount.toString().includes(query)
+      );
+    });
+  }, [processedPayments, contacts, searchQuery]);
+
+  const filteredExpenses = useMemo(() => {
+    if (!searchQuery) return expenses;
+    const query = searchQuery.toLowerCase();
+    return expenses.filter(e => 
+      e.description.toLowerCase().includes(query) ||
+      e.category.toLowerCase().includes(query) ||
+      e.amount.toString().includes(query)
+    );
+  }, [expenses, searchQuery]);
+
   const DashboardView = () => {
       // Generate chart data from processed payments
       const chartData = processedPayments
@@ -2764,38 +2952,46 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
             </tr>
           </thead>
           <tbody>
-            {processedPayments.map(p => {
-              const contact = contacts.find(c => c.id === p.contactId);
-              const isVirtual = p.id?.startsWith('v-');
-              return (
-                <tr key={p.id} className="border-b border-[#1A1A1A]/5 dark:border-white/5 hover:bg-slate-50 dark:hover:bg-white/5">
-                  <td className="px-6 py-4 font-bold text-sm">
-                    {p.date?.toDate ? p.date.toDate().toLocaleString() : new Date(p.date).toLocaleString()}
-                  </td>
-                  <td className="px-6 py-4 font-bold text-sm">{contact?.name || 'Unknown'}</td>
-                  <td className="px-6 py-4 font-bold text-xs uppercase tracking-widest text-blue-600">{p.method}</td>
-                  <td className="px-6 py-4 font-black text-emerald-500 text-right">{t.currencySymbol}{p.amount.toLocaleString()}</td>
-                  <td className="px-6 py-4 text-center">
-                    {!isVirtual && (
-                      <Button 
-                        variant="danger" 
-                        size="icon" 
-                        onClick={(evt) => {
-                          evt.stopPropagation();
-                          setDeleteConfirm({ id: p.id, type: 'payment' });
-                        }} 
-                        className="h-10 w-10"
-                      >
-                         <Trash2 size={20} />
-                      </Button>
-                    )}
-                    {isVirtual && (
-                      <span className="text-[10px] font-black uppercase text-slate-400">{lang === 'en' ? 'Auto' : 'تلقائي'}</span>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
+            {filteredPayments.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-6 py-12 text-center text-[#999999] dark:text-[#94A3B8]">
+                  {searchQuery ? (lang === 'ar' ? 'لا توجد نتائج بحث' : 'No search results') : (lang === 'ar' ? 'لا توجد مدفوعات مسجلة' : 'No payments recorded')}
+                </td>
+              </tr>
+            ) : (
+              filteredPayments.map(p => {
+                const contact = contacts.find(c => c.id === p.contactId);
+                const isVirtual = p.id?.startsWith('v-');
+                return (
+                  <tr key={p.id} className="border-b border-[#1A1A1A]/5 dark:border-white/5 hover:bg-slate-50 dark:hover:bg-white/5">
+                    <td className="px-6 py-4 font-bold text-sm">
+                      {p.date?.toDate ? p.date.toDate().toLocaleString() : new Date(p.date).toLocaleString()}
+                    </td>
+                    <td className="px-6 py-4 font-bold text-sm">{contact?.name || 'Unknown'}</td>
+                    <td className="px-6 py-4 font-bold text-xs uppercase tracking-widest text-blue-600">{p.method}</td>
+                    <td className="px-6 py-4 font-black text-emerald-500 text-right">{t.currencySymbol}{p.amount.toLocaleString()}</td>
+                    <td className="px-6 py-4 text-center">
+                      {!isVirtual && (
+                        <Button 
+                          variant="danger" 
+                          size="icon" 
+                          onClick={(evt) => {
+                            evt.stopPropagation();
+                            setDeleteConfirm({ id: p.id, type: 'payment' });
+                          }} 
+                          className="h-10 w-10"
+                        >
+                           <Trash2 size={20} />
+                        </Button>
+                      )}
+                      {isVirtual && (
+                        <span className="text-[10px] font-black uppercase text-slate-400">{lang === 'en' ? 'Auto' : 'تلقائي'}</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })
+            )}
           </tbody>
         </table>
       </div>
@@ -2884,48 +3080,165 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     </motion.div>
   );
 
-  const ExpensesView = () => (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-black">{lang === 'en' ? 'Expenses' : 'المصاريف'}</h2>
-          <p className="text-[#666666] dark:text-[#94A3B8]">{lang === 'en' ? 'Track your business spending' : 'تتبع نفقات عملك'}</p>
-        </div>
-        <Button onClick={() => setShowAddExpense(true)} className="gap-2 bg-red-600 hover:bg-red-700">
-          <ArrowDownLeft size={18} /> {lang === 'en' ? 'Add Expense' : 'إضافة مصروف'}
-        </Button>
-      </div>
+  const ExpensesView = () => {
+    const getCategoryIcon = (category: string) => {
+      switch (category) {
+        case 'Rent': return <Home size={20} />;
+        case 'Materials': return <Package size={20} />;
+        case 'Shipping': return <Truck size={20} />;
+        case 'Marketing': return <Megaphone size={20} />;
+        case 'Subscriptions': return <RefreshCcw size={20} />;
+        case 'Salaries': return <Users size={20} />;
+        default: return <Receipt size={20} />;
+      }
+    };
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {expenses.map(exp => (
-          <div key={exp.id} className="bg-white dark:bg-white/5 border-2 border-[#1A1A1A]/5 dark:border-white/10 p-6 rounded-3xl relative">
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-[10px] font-black uppercase tracking-widest bg-red-500/10 text-red-500 px-3 py-1 rounded-full">{exp.category}</span>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-[#999999]">
-                  {exp.date?.toDate ? exp.date.toDate().toLocaleDateString() : new Date(exp.date).toLocaleDateString()}
-                </span>
-                <Button 
-                  variant="danger" 
-                  size="icon" 
-                  onClick={(evt) => {
-                    evt.stopPropagation();
-                    console.log("[UI] Delete button clicked for:", exp.id);
-                    setDeleteConfirm({ id: exp.id, type: 'expense' });
-                  }} 
-                  className="h-10 w-10 shadow-none border-none"
-                >
-                  <Trash2 size={20} />
-                </Button>
+    return (
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8 pb-20">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-4xl font-black tracking-tight text-slate-900 dark:text-white mb-2">
+              {lang === 'en' ? 'Expense Tracker' : 'تتبع المصروفات'}
+            </h2>
+            <p className="text-slate-500 dark:text-slate-400 font-medium">
+              {lang === 'en' ? 'Manage your overheads and subscriptions' : 'إدارة النفقات والاشتراكات الخاصة بك'}
+            </p>
+          </div>
+          
+          <div className="flex items-center gap-3">
+            <div className="hidden sm:flex bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 p-1 rounded-2xl">
+              <div className="px-4 py-2 text-center">
+                <p className="text-[10px] uppercase font-bold text-slate-400">{lang === 'en' ? 'Total' : 'الإجمالي'}</p>
+                <p className="font-black text-slate-900 dark:text-white">{t.currencySymbol}{expenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0).toLocaleString()}</p>
               </div>
             </div>
-            <h4 className="font-bold text-lg mb-1">{exp.description}</h4>
-            <p className="text-2xl font-black">{t.currencySymbol}{exp.amount.toLocaleString()}</p>
+            <Button 
+              onClick={() => setShowAddExpense(true)} 
+              className="h-14 px-8 gap-3 bg-red-600 hover:bg-red-700 text-white rounded-2xl shadow-lg shadow-red-500/20 font-black transition-all hover:scale-[1.02] active:scale-[0.98]"
+            >
+              <Plus size={20} />
+              {lang === 'en' ? 'New Expense' : 'مصروف جديد'}
+            </Button>
           </div>
-        ))}
-      </div>
-    </motion.div>
-  );
+        </div>
+
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          {filteredExpenses.length === 0 ? (
+            <div className="col-span-full py-20 text-center flex flex-col items-center justify-center bg-slate-50 dark:bg-white/5 rounded-[40px] border-2 border-dashed border-slate-200 dark:border-white/10">
+              <div className="w-20 h-20 bg-slate-100 dark:bg-white/10 text-slate-400 rounded-full flex items-center justify-center mb-6">
+                <Receipt size={40} />
+              </div>
+              <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">
+                {searchQuery ? (lang === 'ar' ? 'لا توجد نتائج بحث' : 'No results found') : (lang === 'ar' ? 'البداية من هنا' : 'Start tracking here')}
+              </h3>
+              <p className="text-slate-500 dark:text-slate-400 max-w-xs mx-auto">
+                {searchQuery 
+                  ? (lang === 'ar' ? 'لم نجد أي مصروفات تطابق بحثك' : 'We couldnt find any expenses matching your search') 
+                  : (lang === 'ar' ? 'أضف أول مصروف لك لبدء تتبع أرباحك الصافية بدقة' : 'Add your first expense to start tracking your net profit accurately')}
+              </p>
+            </div>
+          ) : (
+            filteredExpenses.map((exp, idx) => (
+              <motion.div 
+                key={exp.id || idx}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: idx * 0.05 }}
+                className="group relative bg-white dark:bg-white/5 border border-slate-100 dark:border-white/10 p-7 rounded-[32px] hover:shadow-2xl hover:shadow-slate-200/50 dark:hover:shadow-none transition-all"
+              >
+                <div className="flex items-start justify-between mb-6">
+                  <div className="flex items-center gap-4">
+                    <div className={cn(
+                      "w-12 h-12 rounded-2xl flex items-center justify-center transition-transform group-hover:scale-110",
+                      exp.type === 'subscription' 
+                       ? "bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400"
+                       : "bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400"
+                    )}>
+                      {getCategoryIcon(exp.category)}
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-black uppercase tracking-widest text-[#999999] dark:text-[#94A3B8]">
+                        {exp.category}
+                      </span>
+                      <p className="text-[10px] font-bold text-slate-400">
+                        {exp.date?.toDate ? exp.date.toDate().toLocaleDateString() : new Date(exp.date).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <Button 
+                      variant="ghost"
+                      size="icon" 
+                      onClick={(evt) => {
+                        evt.stopPropagation();
+                        setEditingExpense(exp);
+                        setNewExpenseData({
+                          description: exp.description,
+                          amount: exp.amount,
+                          category: exp.category,
+                          type: exp.type || 'one-time',
+                          startDate: exp.startDate || new Date().toISOString().split('T')[0]
+                        });
+                        setShowAddExpense(true);
+                      }} 
+                      className="h-10 w-10 text-slate-300 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-xl transition-colors"
+                    >
+                      <Pencil size={18} />
+                    </Button>
+                    <Button 
+                      variant="ghost"
+                      size="icon" 
+                      onClick={(evt) => {
+                        evt.stopPropagation();
+                        setDeleteConfirm({ id: exp.id!, type: 'expense' });
+                      }} 
+                      className="h-10 w-10 text-slate-300 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-colors"
+                    >
+                      <Trash2 size={18} />
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="font-bold text-xl text-slate-900 dark:text-white line-clamp-1">{exp.description}</h4>
+                    <div className="flex items-center gap-2 mt-1">
+                       {exp.type === 'subscription' ? (
+                         <div className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded-md">
+                           <RefreshCcw size={10} />
+                           <span>{t.subscription}</span>
+                         </div>
+                       ) : (
+                         <div className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-slate-100 dark:bg-white/10 text-slate-500 rounded-md">
+                           <Clock size={10} />
+                           <span>{t.oneTime}</span>
+                         </div>
+                       )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-end justify-between pt-2 border-t border-slate-50 dark:border-white/5">
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{lang === 'en' ? 'Amount' : 'القيمة'}</p>
+                      <p className="text-3xl font-black text-slate-900 dark:text-white">{t.currencySymbol}{exp.amount.toLocaleString()}</p>
+                    </div>
+                    
+                    {exp.type === 'subscription' && exp.nextRenewalDate && (
+                      <div className="text-right">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t.nextRenewal}</p>
+                        <p className="text-sm font-black text-blue-600 dark:text-blue-400">{new Date(exp.nextRenewalDate).toLocaleDateString()}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+            ))
+          )}
+        </div>
+      </motion.div>
+    );
+  };
 
   const HistoryContent = () => (
     <div className="space-y-6">
@@ -2976,14 +3289,14 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
         )}
       </div>
 
-      {savedInvoices.length === 0 ? (
+      {filteredInvoices.length === 0 ? (
         <div className="py-12 text-center text-[#999999] dark:text-[#94A3B8]">
           <History size={48} className="mx-auto mb-4 opacity-20" />
-          <p>{t.noHistory}</p>
+          <p>{searchQuery ? (lang === 'ar' ? 'لا توجد نتائج بحث' : 'No search results') : t.noHistory}</p>
         </div>
       ) : (
         <div className="grid gap-4">
-          {savedInvoices.map((inv) => (
+          {filteredInvoices.map((inv) => (
             <div key={inv.id} className="flex items-center justify-between rounded-2xl border border-[#F0F0F0] dark:border-white/5 p-4 transition-colors hover:bg-[#F9F9F9] dark:hover:bg-[#060B16]">
               <div className="flex-1">
                 <h3 className="font-bold text-[#1A1A1A] dark:text-[#E2E8F0]">{inv.invoiceTitle}</h3>
@@ -3322,6 +3635,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
         activeTab={activeTab}
         onTabChange={(tab) => {
           setActiveTab(tab as any);
+          setSearchQuery('');
           setIsPreviewMode(false);
           setIsSidebarOpen(false);
           if (tab === 'invoices') setInvoiceTabMode('list');
@@ -3374,6 +3688,9 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
           onLogout={handleLogout}
           onMenuToggle={() => setIsSidebarOpen(!isSidebarOpen)}
           isMenuOpen={isSidebarOpen}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          activeTab={activeTab}
         />
 
         {/* Global Persistence Notification if syncing */}
@@ -3402,7 +3719,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
               {selectedClientId ? (
                 <ClientDetailPage
                   clientId={selectedClientId}
-                  clients={mappedClients as any}
+                  clients={allClients as any}
                   invoices={savedInvoices}
                   payments={processedPayments}
                   onBack={() => setSelectedClientId(null)}
@@ -3416,7 +3733,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                 />
               ) : (
                 <ClientsPage 
-                  clients={mappedClients as any}
+                  clients={filteredClients as any}
                   monthlyCollections={monthlyCollections}
                   onAddClient={() => setShowAddContact(true)}
                   onSelectClient={(id) => setSelectedClientId(id)}
@@ -4449,57 +4766,124 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowAddExpense(false)} className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
             <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="relative w-full max-w-lg rounded-[32px] bg-white dark:bg-[#0F172A] p-8 shadow-2xl border border-blue-100 dark:border-blue-900/10">
                <div className="flex items-center justify-between mb-8">
-                 <h2 className="text-2xl font-black">{lang === 'en' ? 'Add Expense' : 'إضافة مصروف'}</h2>
-                 <Button variant="ghost" size="icon" onClick={() => setShowAddExpense(false)} className="rounded-full">
+                 <div className="flex items-center gap-3">
+                   <div className="p-3 bg-red-100 dark:bg-red-500/10 text-red-600 rounded-2xl">
+                     {editingExpense ? <Pencil size={24} /> : <ArrowDownLeft size={24} />}
+                   </div>
+                   <h2 className="text-2xl font-black">
+                     {editingExpense 
+                       ? (lang === 'en' ? 'Edit Expense' : 'تعديل المصروف')
+                       : (lang === 'en' ? 'Add Expense' : 'إضافة مصروف')
+                     }
+                   </h2>
+                 </div>
+                 <Button variant="ghost" size="icon" onClick={() => {
+                   setShowAddExpense(false);
+                   setEditingExpense(null);
+                 }} className="rounded-full">
                    <X size={20} />
                  </Button>
                </div>
 
-               <div className="space-y-6">
+               <div className="space-y-5">
+                 <div className="grid grid-cols-2 gap-3 p-1 bg-slate-50 dark:bg-white/5 rounded-2xl">
+                    <button 
+                      onClick={() => setNewExpenseData(prev => ({ ...prev, type: 'one-time' }))}
+                      className={cn(
+                        "py-3 px-4 rounded-xl text-sm font-bold transition-all",
+                        newExpenseData.type === 'one-time' 
+                          ? "bg-white dark:bg-white/10 shadow-sm text-red-600" 
+                          : "text-slate-500"
+                      )}
+                    >
+                      {t.oneTime}
+                    </button>
+                    <button 
+                      onClick={() => setNewExpenseData(prev => ({ ...prev, type: 'subscription' }))}
+                      className={cn(
+                        "py-3 px-4 rounded-xl text-sm font-bold transition-all",
+                        newExpenseData.type === 'subscription' 
+                          ? "bg-white dark:bg-white/10 shadow-sm text-red-600" 
+                          : "text-slate-500"
+                      )}
+                    >
+                      {t.subscription}
+                    </button>
+                 </div>
+
                  <div>
-                   <Label>{lang === 'en' ? 'Description' : 'الوصف'}</Label>
+                   <Label className="text-xs uppercase tracking-wider text-slate-500 mb-2 block">{lang === 'en' ? 'Description' : 'الوصف'}</Label>
                    <Input 
                      value={newExpenseData.description || ''}
                      onChange={e => setNewExpenseData(prev => ({ ...prev, description: e.target.value }))}
-                     className="h-12 bg-slate-50 dark:bg-white/5 border-none font-bold"
+                     className="h-14 bg-slate-50 dark:bg-white/5 border-none font-bold rounded-2xl focus:ring-2 focus:ring-red-500/20"
                      placeholder={lang === 'en' ? 'Rent, Marketing, etc.' : 'إيجار، تسويق، إلخ.'}
                    />
                  </div>
+
                  <div className="grid grid-cols-2 gap-4">
                    <div>
-                     <Label>{lang === 'en' ? 'Amount' : 'المبلغ'}</Label>
+                     <Label className="text-xs uppercase tracking-wider text-slate-500 mb-2 block">{lang === 'en' ? 'Amount' : 'المبلغ'}</Label>
                      <Input 
                        type="number"
                        value={newExpenseData.amount || ''}
                        onChange={e => setNewExpenseData(prev => ({ ...prev, amount: parseFloat(e.target.value) || 0 }))}
-                       className="h-12 bg-slate-50 dark:bg-white/5 border-none font-bold"
+                       className="h-14 bg-slate-50 dark:bg-white/5 border-none font-bold rounded-2xl focus:ring-2 focus:ring-red-500/20"
                      />
                    </div>
                    <div>
-                     <Label>{lang === 'en' ? 'Category' : 'الفئة'}</Label>
+                     <Label className="text-xs uppercase tracking-wider text-slate-500 mb-2 block">{lang === 'en' ? 'Category' : 'الفئة'}</Label>
                      <select 
-                        className="w-full h-12 bg-slate-50 dark:bg-white/5 border-none rounded-xl px-4 outline-none font-bold"
+                        className="w-full h-14 bg-slate-50 dark:bg-white/5 border-none rounded-2xl px-4 outline-none font-bold focus:ring-2 focus:ring-red-500/20 dark:text-white"
                         value={newExpenseData.category}
                         onChange={e => setNewExpenseData(prev => ({ ...prev, category: e.target.value }))}
                      >
-                       <option value="Rent">Rent</option>
-                       <option value="Materials">Materials</option>
-                       <option value="Shipping">Shipping</option>
-                       <option value="Marketing">Marketing</option>
-                       <option value="Other">Other</option>
+                       <option value="Rent" className="dark:bg-[#0F172A] dark:text-white font-bold">{lang === 'ar' ? 'إيجار' : 'Rent'}</option>
+                       <option value="Materials" className="dark:bg-[#0F172A] dark:text-white font-bold">{lang === 'ar' ? 'مواد' : 'Materials'}</option>
+                       <option value="Shipping" className="dark:bg-[#0F172A] dark:text-white font-bold">{lang === 'ar' ? 'شحن' : 'Shipping'}</option>
+                       <option value="Marketing" className="dark:bg-[#0F172A] dark:text-white font-bold">{lang === 'ar' ? 'تسويق' : 'Marketing'}</option>
+                       <option value="Subscriptions" className="dark:bg-[#0F172A] dark:text-white font-bold">{lang === 'ar' ? 'اشتراكات' : 'Subscriptions'}</option>
+                       <option value="Salaries" className="dark:bg-[#0F172A] dark:text-white font-bold">{lang === 'ar' ? 'رواتب' : 'Salaries'}</option>
+                       <option value="Other" className="dark:bg-[#0F172A] dark:text-white font-bold">{lang === 'ar' ? 'أخرى' : 'Other'}</option>
                      </select>
                    </div>
                  </div>
+
+                 {newExpenseData.type === 'subscription' && (
+                   <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} className="pt-2">
+                     <Label className="text-xs uppercase tracking-wider text-slate-500 mb-2 block">{t.startDate}</Label>
+                     <Input 
+                       type="date"
+                       value={newExpenseData.startDate || ''}
+                       onChange={e => setNewExpenseData(prev => ({ ...prev, startDate: e.target.value }))}
+                       className="h-14 bg-slate-50 dark:bg-white/5 border-none font-bold rounded-2xl focus:ring-2 focus:ring-red-500/20"
+                     />
+                   </motion.div>
+                 )}
                  
                  <Button 
                    onClick={() => {
-                     handleAddExpense(newExpenseData);
+                     if (editingExpense) {
+                       handleUpdateExpense(editingExpense.id!, newExpenseData);
+                     } else {
+                       handleAddExpense(newExpenseData);
+                     }
                      setShowAddExpense(false);
-                     setNewExpenseData({ category: 'Rent', amount: 0, description: '' });
+                     setEditingExpense(null);
+                     setNewExpenseData({ 
+                       category: 'Rent', 
+                       amount: 0, 
+                       description: '',
+                       type: 'one-time',
+                       startDate: new Date().toISOString().split('T')[0]
+                     });
                    }}
-                   className="w-full py-6 rounded-2xl bg-red-600 hover:bg-red-700 text-white font-black"
+                   className="w-full py-7 rounded-2xl bg-red-600 hover:bg-red-700 text-white font-black text-lg shadow-xl shadow-red-500/20 mt-4"
                  >
-                   {lang === 'en' ? 'Save Expense' : 'حفظ المصروف'}
+                   {editingExpense 
+                     ? (lang === 'en' ? 'Update Expense' : 'تحديث المصروف')
+                     : (lang === 'en' ? 'Save Expense' : 'حفظ المصروف')
+                   }
                  </Button>
                </div>
             </motion.div>

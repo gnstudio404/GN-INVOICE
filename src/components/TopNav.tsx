@@ -24,6 +24,9 @@ interface TopNavProps {
   setIsDarkMode: (val: boolean) => void;
   onMenuToggle?: () => void;
   isMenuOpen?: boolean;
+  searchQuery: string;
+  onSearchChange: (query: string) => void;
+  activeTab: string;
 }
 
 const TopNav: React.FC<TopNavProps> = ({ 
@@ -35,9 +38,18 @@ const TopNav: React.FC<TopNavProps> = ({
   isDarkMode, 
   setIsDarkMode,
   onMenuToggle,
-  isMenuOpen
+  isMenuOpen,
+  searchQuery,
+  onSearchChange,
+  activeTab
 }) => {
   const isAr = lang === 'ar';
+
+  const getPlaceholder = () => {
+    if (activeTab === 'invoices') return isAr ? "ابحث في الفواتير (العنوان، العميل، الرقم)..." : "Search invoices (Title, Client, SN)...";
+    if (activeTab === 'contacts') return isAr ? "ابحث عن عميل بالاسم أو الرقم..." : "Search clients by name or phone...";
+    return isAr ? "ابحث..." : "Search...";
+  };
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-slate-200 dark:border-white/10 bg-white/90 dark:bg-[#0F172A]/90 backdrop-blur-md flex items-center justify-between px-4 md:px-8 h-20 shadow-sm transition-all duration-300">
@@ -53,17 +65,21 @@ const TopNav: React.FC<TopNavProps> = ({
 
       <div className="flex items-center gap-2 md:gap-8">
         {/* Search Bar */}
-        <div className="relative w-96 hidden lg:block">
-          <Search size={18} className={cn("absolute top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 font-bold", isAr ? "right-3" : "left-3")} />
-          <input 
-            type="text" 
-            placeholder={isAr ? "ابحث عن عميل بالاسم أو الرقم..." : "Search clients..."} 
-            className={cn(
-              "w-full py-3 bg-slate-50/80 dark:bg-white/5 border border-slate-100 dark:border-white/10 rounded-2xl text-sm focus:ring-4 focus:ring-primary/10 dark:focus:ring-primary/20 focus:bg-white dark:focus:bg-white/10 focus:border-primary outline-none transition-all font-medium dark:text-white",
-              isAr ? "pr-10 pl-4" : "pl-10 pr-4"
-            )}
-          />
-        </div>
+        {activeTab !== 'dashboard' && (
+          <div className="relative w-96 hidden lg:block">
+            <Search size={18} className={cn("absolute top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 font-bold", isAr ? "right-3" : "left-3")} />
+            <input 
+              type="text" 
+              placeholder={getPlaceholder()} 
+              value={searchQuery}
+              onChange={(e) => onSearchChange(e.target.value)}
+              className={cn(
+                "w-full py-3 bg-slate-50/80 dark:bg-white/5 border border-slate-100 dark:border-white/10 rounded-2xl text-sm focus:ring-4 focus:ring-primary/10 dark:focus:ring-primary/20 focus:bg-white dark:focus:bg-white/10 focus:border-primary outline-none transition-all font-medium dark:text-white",
+                isAr ? "pr-10 pl-4" : "pl-10 pr-4"
+              )}
+            />
+          </div>
+        )}
 
         <div className="flex items-center gap-1 md:gap-6 border-r border-slate-200 dark:border-white/10 pr-2 md:pr-6">
           <div className="flex items-center gap-1">
