@@ -2302,7 +2302,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                {contactInvoices.map(invoice => (
                  <div key={invoice.id} className="flex items-center justify-between p-5 rounded-2xl bg-[#F9F9F9] dark:bg-white/5 border border-transparent hover:border-blue-500/30 transition-all group">
                     <div className="flex items-center gap-4">
-                      <div className={cn("p-3 rounded-xl", invoice.status === 'paid' ? "bg-emerald-100 text-emerald-600" : "bg-amber-100 text-amber-600")}>
+                      <div className={cn("p-3 rounded-xl", invoice.status === 'paid' ? "bg-emerald-100 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-amber-100 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400")}>
                         <FileText size={20} />
                       </div>
                       <div>
@@ -2322,7 +2322,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                         {invoice.status !== 'paid' && (
                           <button 
                             onClick={() => handleMarkAsPaid(invoice)} 
-                            className="px-3 py-1 bg-emerald-100 text-emerald-600 rounded-lg text-[10px] font-black uppercase hover:bg-emerald-200 transition-colors"
+                            className="px-3 py-1 bg-emerald-100 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-lg text-[10px] font-black uppercase hover:bg-emerald-200 dark:hover:bg-emerald-500/20 transition-colors"
                           >
                             {lang === 'en' ? 'Mark Paid' : 'تم الدفع'}
                           </button>
@@ -2998,9 +2998,9 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                 <div className="flex items-center gap-2 mt-1">
                   <span className={cn(
                     "text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-widest",
-                    inv.status === 'paid' ? "bg-emerald-100 text-emerald-600" : 
-                    inv.status === 'partially-paid' ? "bg-red-100 text-red-600" :
-                    "bg-orange-100 text-orange-600"
+                    inv.status === 'paid' ? "bg-emerald-100 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : 
+                    inv.status === 'partially-paid' ? "bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-400" :
+                    "bg-orange-100 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400"
                   )}>
                     {inv.status === 'paid' ? (lang === 'en' ? 'Paid' : 'مدفوعة') : 
                      inv.status === 'partially-paid' ? (lang === 'en' ? 'Debt' : 'متبقي مديونية') :
@@ -3017,7 +3017,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                     variant="outline" 
                     size="sm" 
                     onClick={() => handleMarkAsPaid(inv)}
-                    className="bg-emerald-50 text-emerald-600 border-emerald-100 hover:bg-emerald-100 font-bold h-9 text-[10px] uppercase tracking-widest"
+                    className="bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-100 dark:border-emerald-500/20 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 font-bold h-9 text-[10px] uppercase tracking-widest"
                   >
                     {lang === 'en' ? 'Mark Paid' : 'تم الدفع'}
                   </Button>

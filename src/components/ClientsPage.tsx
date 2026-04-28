@@ -45,14 +45,14 @@ interface ClientsPageProps {
 const StatCard = ({ title, value, subValue, trend, trendColor, borderSideColor, isDark = false }: any) => (
   <div className={cn(
     "p-6 rounded-xl shadow-sm border transition-all h-full flex flex-col justify-between",
-    isDark ? "bg-inverse-surface text-white" : "bg-white border-slate-100",
+    isDark ? "bg-inverse-surface text-white" : "bg-white dark:bg-white/5 border-slate-100 dark:border-white/10",
     borderSideColor && `border-r-4 ${borderSideColor}`
   )}>
-    <p className={cn("text-xs font-semibold uppercase tracking-wider mb-2", isDark ? "text-slate-400" : "text-slate-500")}>
+    <p className={cn("text-xs font-semibold uppercase tracking-wider mb-2", isDark ? "text-slate-400" : "text-slate-500 dark:text-slate-400")}>
       {title}
     </p>
     <div className="flex items-end justify-between">
-      <h2 className={cn("text-3xl font-bold", isDark ? "text-white" : "text-slate-900")}>
+      <h2 className={cn("text-3xl font-bold", isDark ? "text-white" : "text-slate-900 dark:text-white")}>
         {value}
       </h2>
       <div className="flex flex-col items-end">
@@ -62,7 +62,7 @@ const StatCard = ({ title, value, subValue, trend, trendColor, borderSideColor, 
           </span>
         )}
         {subValue && (
-          <span className={cn("text-xs font-medium px-2 py-0.5 rounded", isDark ? "text-white/70" : "bg-slate-50 text-slate-500")}>
+          <span className={cn("text-xs font-medium px-2 py-0.5 rounded", isDark ? "text-white/70" : "bg-slate-50 dark:bg-white/5 text-slate-500 dark:text-slate-400")}>
             {subValue}
           </span>
         )}
@@ -98,33 +98,33 @@ const ClientCard: React.FC<ClientCardProps> = ({ client, onSelect, onEdit, onDel
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       onClick={() => onSelect(client.id)}
-      className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 hover:border-primary/30 transition-all group cursor-pointer"
+      className="bg-white dark:bg-white/5 p-6 rounded-xl shadow-sm border border-slate-100 dark:border-white/10 hover:border-primary/30 transition-all group cursor-pointer"
     >
       <div className="flex flex-col lg:flex-row items-center justify-between gap-6">
         <div className="flex items-center gap-6 w-full lg:w-auto">
           <div className={cn(
             "w-14 h-14 rounded-full flex items-center justify-center border",
-            client.status === 'regular' ? "bg-emerald-50 text-emerald-600 border-emerald-100" :
-            client.status === 'debt' || client.status === 'critical' ? "bg-red-50 text-red-600 border-red-100" :
-            "bg-blue-50 text-blue-600 border-blue-100"
+            client.status === 'regular' ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-100 dark:border-emerald-500/20" :
+            client.status === 'debt' || client.status === 'critical' ? "bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border-red-100 dark:border-red-500/20" :
+            "bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-100 dark:border-blue-500/20"
           )}>
             {client.type === 'company' ? <Building2 size={28} /> : <User size={28} />}
           </div>
           <div>
-            <h4 className="text-lg font-bold text-slate-900">{client.name}</h4>
+            <h4 className="text-lg font-bold text-slate-900 dark:text-white">{client.name}</h4>
             <div className="flex flex-wrap items-center gap-4 mt-1">
-              <div className="flex items-center gap-1 text-slate-500">
+              <div className="flex items-center gap-1 text-slate-500 dark:text-slate-400">
                 <Phone size={14} />
                 <span className="text-sm font-medium tracking-wider">{client.phone}</span>
               </div>
               {client.location && (
-                <div className="flex items-center gap-1 text-slate-500">
+                <div className="flex items-center gap-1 text-slate-500 dark:text-slate-400">
                   <MapPin size={14} />
                   <span className="text-sm font-medium">{client.location}</span>
                 </div>
               )}
               {client.lastActivity && (
-                <div className="flex items-center gap-1 text-slate-500">
+                <div className="flex items-center gap-1 text-slate-500 dark:text-slate-400">
                   <Clock size={14} />
                   <span className="text-sm font-medium">{client.lastActivity}</span>
                 </div>
@@ -135,7 +135,7 @@ const ClientCard: React.FC<ClientCardProps> = ({ client, onSelect, onEdit, onDel
 
         <div className="flex flex-col sm:flex-row items-center gap-6 lg:gap-12 w-full lg:w-auto">
           <div className="text-center sm:text-left lg:text-left">
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">إجمالي المديونية</p>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest mb-1">إجمالي المديونية</p>
             <p className={cn("text-lg font-black", client.debt > 0 ? "text-error" : "text-secondary")}>
               {client.debt.toLocaleString(undefined, { minimumFractionDigits: 2 })} ج.م
             </p>
@@ -147,13 +147,13 @@ const ClientCard: React.FC<ClientCardProps> = ({ client, onSelect, onEdit, onDel
             </span>
           </div>
 
-          <div className="flex items-center gap-2 pr-0 lg:pr-6 border-r-0 lg:border-r border-slate-100">
+          <div className="flex items-center gap-2 pr-0 lg:pr-6 border-r-0 lg:border-r border-slate-100 dark:border-white/10">
             <button 
               onClick={(e) => {
                 e.stopPropagation();
                 onEdit(client);
               }}
-              className="w-10 h-10 rounded-lg flex items-center justify-center text-slate-400 hover:text-primary hover:bg-primary/5 transition-all"
+              className="w-10 h-10 rounded-lg flex items-center justify-center text-slate-400 dark:text-slate-500 hover:text-primary hover:bg-primary/5 transition-all"
             >
               <Edit2 size={18} />
             </button>
@@ -162,11 +162,11 @@ const ClientCard: React.FC<ClientCardProps> = ({ client, onSelect, onEdit, onDel
                 e.stopPropagation();
                 onDelete(client.id);
               }}
-              className="w-10 h-10 rounded-lg flex items-center justify-center text-slate-400 hover:text-error hover:bg-error/5 transition-all"
+              className="w-10 h-10 rounded-lg flex items-center justify-center text-slate-400 dark:text-slate-500 hover:text-error hover:bg-error/5 transition-all"
             >
               <Trash2 size={18} />
             </button>
-            <button className="w-10 h-10 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition-all">
+            <button className="w-10 h-10 rounded-lg flex items-center justify-center text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 transition-all">
               <MoreVertical size={18} />
             </button>
           </div>
@@ -220,15 +220,15 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, monthlyCollections, 
       {/* Clients List Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h3 className="text-2xl font-bold text-slate-900">قائمة العملاء النشطين</h3>
-          <p className="text-slate-500 mt-1">عرض وتحديث بيانات العملاء والمديونيات الخاصة بهم</p>
+          <h3 className="text-2xl font-bold text-slate-900 dark:text-white">قائمة العملاء النشطين</h3>
+          <p className="text-slate-500 dark:text-slate-400 mt-1">عرض وتحديث بيانات العملاء والمديونيات الخاصة بهم</p>
         </div>
         <div className="flex gap-3">
-          <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-slate-600 hover:bg-slate-50 transition-all font-bold text-sm shadow-sm">
+          <button className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-white/10 transition-all font-bold text-sm shadow-sm">
             <Filter size={18} />
             <span>تصفية</span>
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-slate-600 hover:bg-slate-50 transition-all font-bold text-sm shadow-sm">
+          <button className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-white/10 transition-all font-bold text-sm shadow-sm">
             <Download size={18} />
             <span>تصدير</span>
           </button>
@@ -248,12 +248,12 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, monthlyCollections, 
             />
           ))
         ) : (
-          <div className="text-center py-20 bg-white rounded-2xl border border-dashed border-slate-200">
-            <div className="bg-slate-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Users size={32} className="text-slate-300" />
+          <div className="text-center py-20 bg-white dark:bg-white/5 rounded-2xl border border-dashed border-slate-200 dark:border-white/10">
+            <div className="bg-slate-50 dark:bg-white/5 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Users size={32} className="text-slate-300 dark:text-slate-600" />
             </div>
-            <h3 className="text-lg font-bold text-slate-900">لا يوجد عملاء مضافين</h3>
-            <p className="text-slate-500 mt-1">ابدأ بإضافة أول عميل لك لإدارة مديونياتهم هنا.</p>
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white">لا يوجد عملاء مضافين</h3>
+            <p className="text-slate-500 dark:text-slate-400 mt-1">ابدأ بإضافة أول عميل لك لإدارة مديونياتهم هنا.</p>
             <button 
               onClick={onAddClient}
               className="mt-6 px-6 py-2.5 bg-primary text-white rounded-xl font-bold text-sm hover:opacity-90 transition-all"
@@ -266,15 +266,15 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, monthlyCollections, 
 
       {/* Pagination */}
       {totalPages > 0 && (
-        <div className="mt-12 flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-50/50 p-6 rounded-xl border border-slate-100">
-          <p className="text-sm text-slate-500 font-medium">
+        <div className="mt-12 flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-50/50 dark:bg-white/5 p-6 rounded-xl border border-slate-100 dark:border-white/10">
+          <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">
             عرض {paginatedClients.length} من أصل {clients.length} عملاء
           </p>
           <div className="flex items-center gap-2">
             <button 
               disabled={currentPage === 1}
               onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-              className="w-10 h-10 flex items-center justify-center rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-500 disabled:opacity-30 transition-all"
+              className="w-10 h-10 flex items-center justify-center rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/5 hover:bg-slate-50 dark:hover:bg-white/10 text-slate-500 dark:text-slate-400 disabled:opacity-30 transition-all"
             >
               <ChevronRight size={20} />
             </button>
@@ -287,7 +287,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, monthlyCollections, 
                   "w-10 h-10 flex items-center justify-center rounded-lg font-bold text-sm transition-all",
                   currentPage === page 
                     ? "bg-primary text-white shadow-lg shadow-primary/20" 
-                    : "border border-slate-200 bg-white hover:bg-slate-50 text-slate-600"
+                    : "border border-slate-200 dark:border-white/10 bg-white dark:bg-white/5 hover:bg-slate-50 dark:hover:bg-white/10 text-slate-600 dark:text-slate-400"
                 )}
               >
                 {page}
@@ -297,7 +297,7 @@ const ClientsPage: React.FC<ClientsPageProps> = ({ clients, monthlyCollections, 
             <button 
               disabled={currentPage === totalPages}
               onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-              className="w-10 h-10 flex items-center justify-center rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-500 disabled:opacity-30 transition-all"
+              className="w-10 h-10 flex items-center justify-center rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/5 hover:bg-slate-50 dark:hover:bg-white/10 text-slate-500 dark:text-slate-400 disabled:opacity-30 transition-all"
             >
               <ChevronLeft size={20} />
             </button>

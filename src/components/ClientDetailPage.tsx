@@ -109,23 +109,23 @@ const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
         <div className="flex items-center gap-4">
           <button 
             onClick={onBack}
-            className="w-10 h-10 rounded-xl flex items-center justify-center bg-white border border-slate-100 hover:bg-slate-50 transition-all shadow-sm"
+            className="w-10 h-10 rounded-xl flex items-center justify-center bg-white dark:bg-white/5 border border-slate-100 dark:border-white/10 hover:bg-slate-50 dark:hover:bg-white/10 text-slate-900 dark:text-white transition-all shadow-sm"
           >
             {isAr ? <ArrowRight size={20} /> : <ArrowRight size={20} className="rotate-180" />}
           </button>
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-3xl font-black text-slate-900">{client.name}</h1>
+              <h1 className="text-3xl font-black text-slate-900 dark:text-white">{client.name}</h1>
               <span className={cn(
                 "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest",
-                client.type === 'company' ? "bg-indigo-100 text-indigo-700" : "bg-emerald-100 text-emerald-700"
+                client.type === 'company' ? "bg-indigo-100 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400" : "bg-emerald-100 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
               )}>
                 {isAr ? (client.type === 'company' ? 'شركة' : 'فرد') : (client.type === 'company' ? 'Company' : 'Individual')}
               </span>
             </div>
-            <p className="text-slate-500 font-medium flex items-center gap-4 mt-1">
+            <p className="text-slate-500 dark:text-slate-400 font-medium flex items-center gap-4 mt-1">
               <span className="flex items-center gap-1"><Phone size={14} /> {client.phone}</span>
-              {client.location && <span className="flex items-center gap-1 border-r border-slate-200 pr-4"><MapPin size={14} /> {client.location}</span>}
+              {client.location && <span className="flex items-center gap-1 border-r border-slate-200 dark:border-white/10 pr-4"><MapPin size={14} /> {client.location}</span>}
             </p>
           </div>
         </div>
@@ -133,7 +133,7 @@ const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
         <div className="flex gap-3">
           <button 
             onClick={() => onExport(clientId)}
-            className="flex items-center gap-2 px-6 py-3 bg-white border border-slate-200 rounded-xl text-slate-600 hover:bg-slate-50 transition-all font-bold text-sm shadow-sm"
+            className="flex items-center gap-2 px-6 py-3 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-white/10 transition-all font-bold text-sm shadow-sm"
           >
             <Download size={18} />
             <span>{isAr ? 'تصدير الكشف' : 'Export Statement'}</span>
@@ -150,20 +150,20 @@ const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="p-6 rounded-2xl bg-white border border-slate-100 shadow-sm">
-          <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center mb-4">
+        <div className="p-6 rounded-2xl bg-white dark:bg-white/5 border border-slate-100 dark:border-white/10 shadow-sm">
+          <div className="w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-4">
             <Receipt size={20} />
           </div>
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">{isAr ? 'إجمالي الفواتير' : 'Total Invoiced'}</p>
-          <h3 className="text-2xl font-black text-slate-900">{totalInvoiced.toLocaleString()} <span className="text-sm font-medium">ج.م</span></h3>
+          <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1">{isAr ? 'إجمالي الفواتير' : 'Total Invoiced'}</p>
+          <h3 className="text-2xl font-black text-slate-900 dark:text-white">{totalInvoiced.toLocaleString()} <span className="text-sm font-medium">ج.م</span></h3>
         </div>
         
-        <div className="p-6 rounded-2xl bg-white border border-slate-100 shadow-sm">
-          <div className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center mb-4">
+        <div className="p-6 rounded-2xl bg-white dark:bg-white/5 border border-slate-100 dark:border-white/10 shadow-sm">
+          <div className="w-10 h-10 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-4">
             <TrendingUp size={20} />
           </div>
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">{isAr ? 'إجمالي المدفوع' : 'Total Paid'}</p>
-          <h3 className="text-2xl font-black text-emerald-600">{totalPaid.toLocaleString()} <span className="text-sm font-medium">ج.م</span></h3>
+          <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1">{isAr ? 'إجمالي المدفوع' : 'Total Paid'}</p>
+          <h3 className="text-2xl font-black text-emerald-600 dark:text-emerald-400">{totalPaid.toLocaleString()} <span className="text-sm font-medium">ج.م</span></h3>
         </div>
 
         <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 shadow-xl shadow-slate-200 dark:shadow-none">
@@ -180,27 +180,27 @@ const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
         {/* Invoices List */}
         <div className="lg:col-span-2 space-y-6">
           <div className="flex items-center justify-between">
-            <h3 className="text-xl font-black text-slate-900 flex items-center gap-2">
+            <h3 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
               <Receipt className="text-primary" />
               {isAr ? 'الفواتير' : 'Invoices'}
             </h3>
-            <span className="text-xs font-bold text-slate-400 bg-slate-100 px-3 py-1 rounded-full">{clientInvoices.length}</span>
+            <span className="text-xs font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-white/5 px-3 py-1 rounded-full">{clientInvoices.length}</span>
           </div>
 
           <div className="space-y-4">
             {clientInvoices.length > 0 ? (
               clientInvoices.map(inv => (
-                <div key={inv.id} className="p-5 rounded-2xl bg-white border border-slate-100 hover:border-primary/20 transition-all shadow-sm group">
+                <div key={inv.id} className="p-5 rounded-2xl bg-white dark:bg-white/5 border border-slate-100 dark:border-white/10 hover:border-primary/20 transition-all shadow-sm group">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4 flex-1">
-                      <div className="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center group-hover:bg-primary/5 transition-all text-slate-400 group-hover:text-primary">
+                      <div className="w-12 h-12 rounded-xl bg-slate-50 dark:bg-white/5 flex items-center justify-center group-hover:bg-primary/5 transition-all text-slate-400 dark:text-slate-500 group-hover:text-primary">
                         <Receipt size={24} />
                       </div>
                       <div className="flex-1">
-                        <h4 className="font-bold text-slate-900 line-clamp-1">{inv.invoiceTitle || (isAr ? 'فاتورة بدون عنوان' : 'Untitled Invoice')}</h4>
-                        <p className="text-xs font-medium text-slate-400 flex items-center gap-2 mt-1">
+                        <h4 className="font-bold text-slate-900 dark:text-white line-clamp-1">{inv.invoiceTitle || (isAr ? 'فاتورة بدون عنوان' : 'Untitled Invoice')}</h4>
+                        <p className="text-xs font-medium text-slate-400 dark:text-slate-500 flex items-center gap-2 mt-1">
                           <span className="font-black text-blue-600">{inv.serialNumber}</span>
-                          <span className="w-1 h-1 rounded-full bg-slate-300" />
+                          <span className="w-1 h-1 rounded-full bg-slate-300 dark:bg-white/10" />
                           <span>{new Date(inv.savedAt).toLocaleDateString(isAr ? 'ar-EG' : 'en-US')}</span>
                         </p>
                       </div>
@@ -208,7 +208,7 @@ const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
                     
                     <div className="flex flex-col md:flex-row items-center gap-4 md:gap-8">
                       <div className="text-left md:text-right">
-                        <p className="text-lg font-black text-slate-900 whitespace-nowrap">{inv.totalAmount.toLocaleString()} ج.م</p>
+                        <p className="text-lg font-black text-slate-900 dark:text-white whitespace-nowrap">{inv.totalAmount.toLocaleString()} ج.م</p>
                         <span className={cn(
                           "text-[10px] font-black uppercase tracking-widest",
                           inv.status === 'paid' ? "text-emerald-500" : 
@@ -227,7 +227,7 @@ const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
                         {inv.status !== 'paid' && onMarkAsPaid && (
                           <button 
                             onClick={() => onMarkAsPaid(inv)}
-                            className="p-2 rounded-lg text-emerald-600 hover:bg-emerald-50 transition-all"
+                            className="p-2 rounded-lg text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-all"
                             title={isAr ? 'تم الدفع' : 'Mark Paid'}
                           >
                             <div className="flex flex-col items-center gap-1">
@@ -248,7 +248,7 @@ const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
                         </button>
                         <button 
                           onClick={() => onDownloadInvoice(inv)}
-                          className="p-2 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-all"
+                          className="p-2 rounded-lg text-slate-400 dark:text-slate-500 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-all"
                           title={isAr ? 'تحميل' : 'Download'}
                         >
                           <div className="flex flex-col items-center gap-1">
@@ -258,7 +258,7 @@ const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
                         </button>
                         <button 
                           onClick={() => onDeleteInvoice(inv.id)}
-                          className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all"
+                          className="p-2 rounded-lg text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all"
                           title={isAr ? 'حذف' : 'Delete'}
                         >
                           <div className="flex flex-col items-center gap-1">
@@ -272,9 +272,9 @@ const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
                 </div>
               ))
             ) : (
-              <div className="text-center py-20 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
-                <Receipt size={40} className="text-slate-300 mx-auto mb-4" />
-                <p className="text-slate-500 font-medium">{isAr ? 'لا يوجد فواتير مسجلة لهذا العميل' : 'No invoices registered for this client'}</p>
+              <div className="text-center py-20 bg-slate-50/50 dark:bg-white/5 rounded-2xl border border-dashed border-slate-200 dark:border-white/10">
+                <Receipt size={40} className="text-slate-300 dark:text-slate-700 mx-auto mb-4" />
+                <p className="text-slate-500 dark:text-slate-400 font-medium">{isAr ? 'لا يوجد فواتير مسجلة لهذا العميل' : 'No invoices registered for this client'}</p>
               </div>
             )}
           </div>
@@ -283,7 +283,7 @@ const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
         {/* Payments List */}
         <div className="space-y-6">
           <div className="flex items-center justify-between">
-            <h3 className="text-xl font-black text-slate-900 flex items-center gap-2">
+            <h3 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
               <Wallet className="text-emerald-500" />
               {isAr ? 'آخر المدفوعات' : 'Recent Payments'}
             </h3>
@@ -292,32 +292,32 @@ const ClientDetailPage: React.FC<ClientDetailPageProps> = ({
           <div className="space-y-4">
             {clientPayments.length > 0 ? (
               clientPayments.map(p => (
-                <div key={p.id} className="p-4 rounded-xl bg-white border border-slate-100 shadow-sm">
+                <div key={p.id} className="p-4 rounded-xl bg-white dark:bg-white/5 border border-slate-100 dark:border-white/10 shadow-sm">
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                      <div className="w-10 h-10 rounded-full bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
                         <TrendingUp size={18} />
                       </div>
                       <div>
-                        <p className="text-sm font-bold text-slate-900">{p.amount.toLocaleString()} ج.م</p>
-                        <p className="text-[10px] font-medium text-slate-400">{new Date(p.date).toLocaleDateString(isAr ? 'ar-EG' : 'en-US')}</p>
+                        <p className="text-sm font-bold text-slate-900 dark:text-white">{p.amount.toLocaleString()} ج.م</p>
+                        <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500">{new Date(p.date).toLocaleDateString(isAr ? 'ar-EG' : 'en-US')}</p>
                       </div>
                     </div>
-                    <span className="text-[10px] font-black uppercase bg-slate-100 text-slate-500 px-2 py-0.5 rounded">
+                    <span className="text-[10px] font-black uppercase bg-slate-100 dark:bg-white/10 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded">
                       {p.method}
                     </span>
                   </div>
                   {p.note && (
-                    <p className="mt-2 text-xs text-slate-500 bg-slate-50 p-2 rounded border border-slate-100">
+                    <p className="mt-2 text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-white/5 p-2 rounded border border-slate-100 dark:border-white/10">
                       {p.note}
                     </p>
                   )}
                 </div>
               ))
             ) : (
-              <div className="text-center py-10 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
-                <Wallet size={32} className="text-slate-300 mx-auto mb-3" />
-                <p className="text-xs text-slate-500 font-medium">{isAr ? 'لا يوجد دفعات مسجلة' : 'No payments registered'}</p>
+              <div className="text-center py-10 bg-slate-50/50 dark:bg-white/5 rounded-xl border border-dashed border-slate-200 dark:border-white/10">
+                <Wallet size={32} className="text-slate-300 dark:text-slate-700 mx-auto mb-3" />
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">{isAr ? 'لا يوجد دفعات مسجلة' : 'No payments registered'}</p>
               </div>
             )}
           </div>
