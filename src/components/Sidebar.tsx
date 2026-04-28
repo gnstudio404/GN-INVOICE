@@ -1,4 +1,5 @@
 import React from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   LayoutDashboard, 
   Users, 
@@ -17,9 +18,11 @@ interface SidebarProps {
   onAddClient: () => void;
   lang: 'ar' | 'en';
   isSuperAdmin?: boolean;
+  isOpen: boolean;
+  onClose: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, onAddClient, lang, isSuperAdmin }) => {
+const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, onAddClient, lang, isSuperAdmin, isOpen, onClose }) => {
   const isAr = lang === 'ar';
 
   const menuItems = [
@@ -37,59 +40,76 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, onAddClient, 
   }
 
   return (
-    <aside className={cn(
-      "fixed top-0 h-screen w-64 border-slate-200 bg-white shadow-[4px_0px_20px_rgba(0,0,0,0.05)] flex flex-col overflow-y-auto z-50 transition-all duration-300",
-      isAr ? "right-0 border-l" : "left-0 border-r"
-    )}>
-      <div className="p-6 border-b border-slate-100">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-primary-container flex items-center justify-center text-white shadow-lg shadow-primary/20">
-            <Receipt size={24} />
-          </div>
-          <div>
-            <h1 className="text-xl font-black text-slate-900 leading-tight">
-              {isAr ? 'نظام الفواتير' : 'Invoicing Pro'}
-            </h1>
-            <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">
-              {isAr ? 'إدارة الأعمال' : 'Business Management'}
-            </p>
+    <>
+      {/* Mobile Overlay */}
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[59] lg:hidden"
+          />
+        )}
+      </AnimatePresence>
+
+      <aside className={cn(
+        "fixed top-0 h-screen w-64 border-slate-200 bg-white dark:bg-[#0F172A] shadow-[4px_0px_20px_rgba(0,0,0,0.05)] flex flex-col overflow-y-auto z-[60] transition-all duration-300",
+        isAr 
+          ? cn("right-0 border-l", isOpen ? "translate-x-0" : "translate-x-full lg:translate-x-0") 
+          : cn("left-0 border-r", isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0")
+      )}>
+        <div className="p-6 border-b border-slate-100">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-primary-container flex items-center justify-center text-white shadow-lg shadow-primary/20">
+              <Receipt size={24} />
+            </div>
+            <div>
+              <h1 className="text-xl font-black text-slate-900 leading-tight">
+                {isAr ? 'نظام الفواتير' : 'Invoicing Pro'}
+              </h1>
+              <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">
+                {isAr ? 'إدارة الأعمال' : 'Business Management'}
+              </p>
+            </div>
           </div>
         </div>
-      </div>
 
-      <nav className="flex-1 px-4 py-8 space-y-2">
-        {menuItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = activeTab === item.id;
-          
-          return (
-            <button
-              key={item.id}
-              onClick={() => onTabChange(item.id)}
-              className={cn(
-                "w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all duration-200 font-bold text-sm",
-                isActive 
-                  ? "bg-blue-50 text-blue-700 shadow-sm border-r-4 border-blue-600" 
-                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
-              )}
-            >
-              <Icon size={20} className={cn("transition-transform", isActive && "scale-110")} />
-              <span>{item.label}</span>
-            </button>
-          );
-        })}
-      </nav>
+        <nav className="flex-1 px-4 py-8 space-y-2">
+          {menuItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeTab === item.id;
+            
+            return (
+              <button
+                key={item.id}
+                onClick={() => onTabChange(item.id)}
+                className={cn(
+                  "w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all duration-200 font-bold text-sm",
+                  isActive 
+                    ? "bg-blue-50 text-blue-700 shadow-sm border-r-4 border-blue-600" 
+                    : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                )}
+              >
+                <Icon size={20} className={cn("transition-transform", isActive && "scale-110")} />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </nav>
 
-      <div className="p-4 mt-auto border-t border-slate-100">
-        <button 
-          onClick={onAddClient}
-          className="w-full flex items-center justify-center gap-2 py-4 px-4 bg-primary text-white rounded-2xl font-black text-sm active:scale-[0.98] transition-all shadow-xl shadow-primary/20 hover:opacity-90"
-        >
-          <UserPlus size={18} />
-          <span>{isAr ? 'إضافة عميل جديد' : 'New Client'}</span>
-        </button>
-      </div>
-    </aside>
+        <div className="p-4 mt-auto border-t border-slate-100">
+          <button 
+            onClick={onAddClient}
+            className="w-full flex items-center justify-center gap-2 py-4 px-4 bg-primary text-white rounded-2xl font-black text-sm active:scale-[0.98] transition-all shadow-xl shadow-primary/20 hover:opacity-90"
+          >
+            <UserPlus size={18} />
+            <span>{isAr ? 'إضافة عميل جديد' : 'New Client'}</span>
+          </button>
+        </div>
+      </aside>
+    </>
   );
 };
 

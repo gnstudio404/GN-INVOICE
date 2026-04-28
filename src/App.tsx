@@ -465,6 +465,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
   const [products, setProducts] = useState<Product[]>([]);
   const [businessInfo, setBusinessInfo] = useState<BusinessInfo | null>(null);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'invoices' | 'contacts' | 'payments' | 'expenses' | 'profile' | 'subscribers' | 'history'>(() => (localStorage.getItem('gn_active_tab') as any) || 'dashboard');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [invoiceTabMode, setInvoiceTabMode] = useState<'list' | 'editor'>('list');
   const [showSaveSuccess, setShowSaveSuccess] = useState(false);
   
@@ -597,6 +598,12 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
   useEffect(() => {
     localStorage.setItem('gn_active_tab', activeTab);
   }, [activeTab]);
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      navigate('/login');
+    }
+  }, [user, authLoading, navigate]);
 
   // Firebase Auth and Firestore listener
   const generateUniquePrefix = async (): Promise<string> => {
@@ -2525,8 +2532,8 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
            </div>
 
            {/* Top Stats - Bento Style */}
-           <div className="grid gap-6 md:grid-cols-4">
-             <div className="bg-brand-primary text-white p-8 rounded-[40px] relative overflow-hidden flex flex-col justify-between min-h-[200px] shadow-2xl shadow-brand-primary/20 group">
+           <div className="grid gap-4 md:gap-6 grid-cols-1 sm:grid-cols-2 md:grid-cols-4">
+             <div className="bg-brand-primary text-white p-6 md:p-8 rounded-[30px] md:rounded-[40px] relative overflow-hidden flex flex-col justify-between min-h-[160px] md:min-h-[200px] shadow-2xl shadow-brand-primary/20 group">
                 <div className="absolute top-0 right-0 w-40 h-40 bg-white/20 rounded-full translate-x-1/2 -translate-y-1/2 blur-3xl group-hover:bg-white/30 transition-all" />
                 <div className="flex items-center justify-between relative z-10">
                   <div className="p-3 rounded-2xl bg-white/10 backdrop-blur-md">
@@ -2540,7 +2547,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                 </div>
              </div>
              
-             <div className="bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 p-8 rounded-[40px] flex flex-col justify-between group hover:border-brand-tertiary/20 transition-all min-h-[200px]">
+             <div className="bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 p-6 md:p-8 rounded-[30px] md:rounded-[40px] flex flex-col justify-between group hover:border-brand-tertiary/20 transition-all min-h-[160px] md:min-h-[200px]">
                 <div className="flex items-center justify-between">
                   <div className="p-3 rounded-2xl bg-brand-tertiary/5 dark:bg-brand-tertiary/10">
                     <Clock size={24} className="text-brand-tertiary" />
@@ -2553,7 +2560,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                 </div>
              </div>
 
-             <div className="bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 p-8 rounded-[40px] flex flex-col justify-between group hover:border-brand-secondary/20 transition-all min-h-[200px]">
+             <div className="bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 p-6 md:p-8 rounded-[30px] md:rounded-[40px] flex flex-col justify-between group hover:border-brand-secondary/20 transition-all min-h-[160px] md:min-h-[200px]">
                 <div className="flex items-center justify-between">
                   <div className="p-3 rounded-2xl bg-brand-secondary/5 dark:bg-brand-secondary/10">
                     <ArrowDownLeft size={24} className="text-brand-secondary" />
@@ -2565,7 +2572,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                 </div>
              </div>
 
-             <div className="bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 p-8 rounded-[40px] flex flex-col justify-between group hover:border-brand-primary/20 transition-all min-h-[200px]">
+             <div className="bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 p-6 md:p-8 rounded-[30px] md:rounded-[40px] flex flex-col justify-between group hover:border-brand-primary/20 transition-all min-h-[160px] md:min-h-[200px]">
                 <div className="flex items-center justify-between">
                   <div className="p-3 rounded-2xl bg-brand-primary/5 dark:bg-brand-primary/10">
                     <FileText size={24} className="text-brand-primary" />
@@ -2580,18 +2587,18 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
 
            {/* Middle Grid */}
            <div className="grid gap-8 lg:grid-cols-12">
-             <div className="lg:col-span-8 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 p-10 rounded-[48px] shadow-sm">
-                <div className="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-4">
+             <div className="lg:col-span-8 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 p-6 md:p-10 rounded-[32px] md:rounded-[48px] shadow-sm">
+                <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 md:mb-10 gap-4">
                   <div>
-                    <h3 className="text-2xl font-black tracking-tight">{lang === 'en' ? 'Revenue Flow' : 'تدفق الإيرادات'}</h3>
-                    <p className="text-xs text-slate-400 font-medium">{lang === 'en' ? 'Weekly revenue tracking' : 'تتبع الإيرادات الأسبوعية'}</p>
+                    <h3 className="text-xl md:text-2xl font-black tracking-tight">{lang === 'en' ? 'Revenue Flow' : 'تدفق الإيرادات'}</h3>
+                    <p className="text-[10px] md:text-xs text-slate-400 font-medium">{lang === 'en' ? 'Weekly revenue tracking' : 'تتبع الإيرادات الأسبوعية'}</p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <button className="px-5 py-2 text-[10px] font-black uppercase tracking-widest bg-slate-100 dark:bg-white/5 text-slate-500 rounded-full">{lang === 'en' ? 'Weekly' : 'أسبوعي'}</button>
-                    <button className="px-5 py-2 text-[10px] font-black uppercase tracking-widest bg-brand-primary text-white rounded-full shadow-lg shadow-brand-primary/20">{lang === 'en' ? 'Monthly' : 'شهري'}</button>
+                    <button className="px-4 py-1.5 md:px-5 md:py-2 text-[8px] md:text-[10px] font-black uppercase tracking-widest bg-slate-100 dark:bg-white/5 text-slate-500 rounded-full">{lang === 'en' ? 'Weekly' : 'أسبوعي'}</button>
+                    <button className="px-4 py-1.5 md:px-5 md:py-2 text-[8px] md:text-[10px] font-black uppercase tracking-widest bg-brand-primary text-white rounded-full shadow-lg shadow-brand-primary/20">{lang === 'en' ? 'Monthly' : 'شهري'}</button>
                   </div>
                 </div>
-                <div className="h-[320px] w-full mt-4">
+                <div className="h-[240px] md:h-[320px] w-full mt-2 md:mt-4">
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={chartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
                       <defs>
@@ -3316,11 +3323,17 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
         onTabChange={(tab) => {
           setActiveTab(tab as any);
           setIsPreviewMode(false);
+          setIsSidebarOpen(false);
           if (tab === 'invoices') setInvoiceTabMode('list');
         }}
-        onAddClient={() => setShowAddContact(true)}
+        onAddClient={() => {
+          setShowAddContact(true);
+          setIsSidebarOpen(false);
+        }}
         lang={lang}
         isSuperAdmin={isSuperAdmin}
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
       />
 
       {/* Persistence Notice (Sticky overlay) */}
@@ -3359,6 +3372,8 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
           isDarkMode={isDarkMode}
           setIsDarkMode={setIsDarkMode}
           onLogout={handleLogout}
+          onMenuToggle={() => setIsSidebarOpen(!isSidebarOpen)}
+          isMenuOpen={isSidebarOpen}
         />
 
         {/* Global Persistence Notification if syncing */}
@@ -3659,7 +3674,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
 
                       <div className="md:col-span-2">
                         <Label>{lang === 'en' ? 'Invoice Status' : 'حالة الفاتورة'}</Label>
-                        <div className="flex gap-2">
+                        <div className="grid grid-cols-2 md:flex gap-2">
                           {(['pending', 'paid', 'overdue', 'partially-paid'] as const).map(s => (
                             <button 
                               key={s}
@@ -3682,13 +3697,14 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                                 });
                               }}
                               className={cn(
-                                "flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all",
+                                "py-3 rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-widest border transition-all",
                                 invoiceData.status === s
                                   ? (s === 'paid' ? "bg-emerald-500 text-white border-emerald-500 shadow-lg shadow-emerald-500/20" : 
                                      s === 'pending' ? "bg-orange-500 text-white border-orange-500 shadow-lg shadow-orange-500/20" : 
                                      s === 'partially-paid' ? "bg-red-500 text-white border-red-500 shadow-lg shadow-red-500/20" :
                                      "bg-red-500 text-white border-red-500 shadow-lg shadow-red-500/20")
-                                  : "bg-white dark:bg-white/5 border-slate-200 dark:border-white/10 text-[#666666]"
+                                  : "bg-white dark:bg-white/5 border-slate-200 dark:border-white/10 text-[#666666]",
+                                "md:flex-1"
                               )}
                             >
                               {s === 'paid' ? (lang === 'en' ? 'Paid' : 'مدفوعة') : 

@@ -7,7 +7,9 @@ import {
   Sun,
   Moon,
   LogOut,
-  Languages
+  Languages,
+  Menu,
+  X
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { User } from 'firebase/auth';
@@ -20,6 +22,8 @@ interface TopNavProps {
   setLang: (lang: 'ar' | 'en') => void;
   isDarkMode: boolean;
   setIsDarkMode: (val: boolean) => void;
+  onMenuToggle?: () => void;
+  isMenuOpen?: boolean;
 }
 
 const TopNav: React.FC<TopNavProps> = ({ 
@@ -29,17 +33,25 @@ const TopNav: React.FC<TopNavProps> = ({
   lang, 
   setLang, 
   isDarkMode, 
-  setIsDarkMode 
+  setIsDarkMode,
+  onMenuToggle,
+  isMenuOpen
 }) => {
   const isAr = lang === 'ar';
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-slate-200 bg-white/90 backdrop-blur-md flex items-center justify-between px-8 h-20 shadow-sm transition-all duration-300">
-      <div className="flex items-center gap-4">
-        <h2 className="text-xl font-black text-slate-800 tracking-tight">{title}</h2>
+    <header className="sticky top-0 z-40 w-full border-b border-slate-200 bg-white/90 backdrop-blur-md flex items-center justify-between px-4 md:px-8 h-20 shadow-sm transition-all duration-300">
+      <div className="flex items-center gap-3">
+        <button 
+          onClick={onMenuToggle}
+          className="lg:hidden w-10 h-10 flex items-center justify-center rounded-xl text-slate-500 hover:bg-slate-50 active:scale-95 transition-all"
+        >
+          {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
+        </button>
+        <h2 className="text-lg md:text-xl font-black text-slate-800 tracking-tight line-clamp-1">{title}</h2>
       </div>
 
-      <div className="flex items-center gap-8">
+      <div className="flex items-center gap-2 md:gap-8">
         {/* Search Bar */}
         <div className="relative w-96 hidden lg:block">
           <Search size={18} className={cn("absolute top-1/2 -translate-y-1/2 text-slate-400 font-bold", isAr ? "right-3" : "left-3")} />
@@ -53,8 +65,8 @@ const TopNav: React.FC<TopNavProps> = ({
           />
         </div>
 
-        <div className="flex items-center gap-6 border-r border-slate-200 pr-6">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 md:gap-6 border-r border-slate-200 pr-2 md:pr-6">
+          <div className="flex items-center gap-1">
             <button 
               onClick={() => setIsDarkMode(!isDarkMode)}
               className="w-10 h-10 flex items-center justify-center rounded-xl text-slate-500 hover:text-primary hover:bg-slate-50 transition-all"
@@ -69,12 +81,12 @@ const TopNav: React.FC<TopNavProps> = ({
             </button>
           </div>
 
-          <button className="relative w-10 h-10 flex items-center justify-center rounded-xl text-slate-500 hover:text-primary hover:bg-slate-50 transition-all">
+          <button className="relative w-10 h-10 hidden sm:flex items-center justify-center rounded-xl text-slate-500 hover:text-primary hover:bg-slate-50 transition-all">
             <Bell size={20} />
             <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
           </button>
           
-          <div className="flex items-center gap-3 cursor-pointer group p-1.5 rounded-2xl hover:bg-slate-50 transition-all border border-transparent hover:border-slate-100">
+          <div className="flex items-center gap-1 md:gap-3 cursor-pointer group p-1.5 rounded-2xl hover:bg-slate-50 transition-all border border-transparent hover:border-slate-100">
             {user?.photoURL ? (
               <div className="w-10 h-10 rounded-xl overflow-hidden shadow-sm">
                 <img src={user.photoURL} alt="Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
