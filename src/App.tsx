@@ -2028,15 +2028,96 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     }, 800);
   };
 
-  const handlePrint = () => {
-    window.print();
+  const handlePrint = async () => {
+    if (!invoiceRef.current) return;
+    
+    setIsGenerating(true);
+    const wasDark = document.documentElement.classList.contains('dark');
+    try {
+      if (wasDark) {
+        document.documentElement.classList.remove('dark');
+      }
+
+      // Wait for all images to load
+      const images = Array.from(invoiceRef.current.getElementsByTagName('img')) as HTMLImageElement[];
+      await Promise.all(images.map(img => {
+        if (img.complete) return Promise.resolve();
+        return new Promise<void>(resolve => {
+          img.onload = () => resolve();
+          img.onerror = () => resolve();
+        });
+      }));
+
+      // Small delay for any final rendering
+      await new Promise(resolve => setTimeout(resolve, 800));
+
+      const dataUrl = await htmlToImage.toJpeg(invoiceRef.current, {
+        quality: 0.95,
+        pixelRatio: 2,
+        backgroundColor: '#FFFFFF',
+        skipFonts: true,
+        style: {
+          borderRadius: '0px',
+          boxShadow: 'none',
+          border: '2px solid #1A1A1A',
+        }
+      });
+      
+      const printWindow = window.open('', '_blank');
+      if (printWindow) {
+        printWindow.document.write(`
+          <!DOCTYPE html>
+          <html lang="${lang}">
+            <head>
+              <title>${invoiceData.serialNumber || 'Invoice'}</title>
+              <style>
+                body {
+                  margin: 0;
+                  padding: 0;
+                  display: flex;
+                  justify-content: center;
+                  align-items: flex-start;
+                  background: #FFFFFF;
+                }
+                img {
+                  max-width: 100%;
+                  height: auto;
+                }
+                @media print {
+                  body { background: white; }
+                  img { width: 100%; }
+                  @page { margin: 0; }
+                }
+              </style>
+            </head>
+            <body>
+              <img src="${dataUrl}" onload="window.print(); setTimeout(() => window.close(), 500);" />
+            </body>
+          </html>
+        `);
+        printWindow.document.close();
+      }
+    } catch (err) {
+      console.error('Error in handlePrint:', err);
+      window.print();
+    } finally {
+      if (wasDark) {
+        document.documentElement.classList.add('dark');
+      }
+      setIsGenerating(false);
+    }
   };
 
   const handleDownloadImage = async () => {
     if (!invoiceRef.current) return;
     
     setIsDownloadingImage(true);
+    const wasDark = document.documentElement.classList.contains('dark');
     try {
+      if (wasDark) {
+        document.documentElement.classList.remove('dark');
+      }
+
       // Wait for all images to load
       const images = Array.from(invoiceRef.current.getElementsByTagName('img')) as HTMLImageElement[];
       await Promise.all(images.map(img => {
@@ -2053,12 +2134,12 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
       const dataUrl = await htmlToImage.toJpeg(invoiceRef.current, {
         quality: 0.8,
         pixelRatio: 1.5,
-        backgroundColor: isDarkMode ? '#060B16' : '#FFFFFF',
+        backgroundColor: '#FFFFFF',
         skipFonts: true,
         style: {
           borderRadius: '24px',
           boxShadow: 'none',
-          border: isDarkMode ? '2px solid rgba(255,255,255,0.2)' : '2px solid #1A1A1A',
+          border: '2px solid #1A1A1A',
         }
       });
       
@@ -2073,6 +2154,9 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
       console.error('Error generating image:', err);
       alert(lang === 'en' ? "Failed to generate image. Please try printing instead." : "فشل إنشاء الصورة. يرجى محاولة الطباعة بدلاً من ذلك.");
     } finally {
+      if (wasDark) {
+        document.documentElement.classList.add('dark');
+      }
       setIsDownloadingImage(false);
     }
   };
@@ -2081,7 +2165,12 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     if (!invoiceRef.current) return;
     
     setIsGenerating(true);
+    const wasDark = document.documentElement.classList.contains('dark');
     try {
+      if (wasDark) {
+        document.documentElement.classList.remove('dark');
+      }
+
       // Wait for all images to load
       const images = Array.from(invoiceRef.current.getElementsByTagName('img')) as HTMLImageElement[];
       await Promise.all(images.map(img => {
@@ -2098,12 +2187,12 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
       const dataUrl = await htmlToImage.toJpeg(invoiceRef.current, {
         quality: 0.8,
         pixelRatio: 1.5,
-        backgroundColor: isDarkMode ? '#060B16' : '#FFFFFF',
+        backgroundColor: '#FFFFFF',
         skipFonts: true,
         style: {
           borderRadius: '24px',
           boxShadow: 'none',
-          border: isDarkMode ? '2px solid rgba(255,255,255,0.2)' : '2px solid #1A1A1A',
+          border: '2px solid #1A1A1A',
         }
       });
       
@@ -2127,6 +2216,9 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
       console.error('Error generating PDF:', err);
       window.print();
     } finally {
+      if (wasDark) {
+        document.documentElement.classList.add('dark');
+      }
       setIsGenerating(false);
     }
   };
@@ -2238,7 +2330,9 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     setInvoiceData(invoice);
     setActiveTab('invoices');
     setIsPreviewMode(true);
+    setInvoiceTabMode('editor');
     setShowHistory(false);
+    setSelectedClientId(null);
     setSelectedContactId(null);
     
     // Give time for the preview to render high-quality assets
@@ -4613,7 +4707,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                       <LinkIcon size={18} className={lang === 'ar' ? 'ml-2' : 'mr-2'} />
                       {lang === 'en' ? 'Copy Link' : 'نسخ الرابط'}
                     </Button>
-                    <Button onClick={() => window.print()} className="rounded-2xl h-12 px-6 font-bold bg-[#1A1A1A] hover:bg-black dark:bg-white dark:text-[#1A1A1A]">
+                    <Button onClick={handlePrint} className="rounded-2xl h-12 px-6 font-bold bg-[#1A1A1A] hover:bg-black dark:bg-white dark:text-[#1A1A1A]">
                       <Printer size={18} className={lang === 'ar' ? 'ml-2' : 'mr-2'} />
                       {lang === 'en' ? 'Print Invoice' : 'طباعة الفاتورة'}
                     </Button>
