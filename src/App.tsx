@@ -628,9 +628,16 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
 
   const lastSavedDataRef = useRef<string>('');
 
+  const [isPreviewMode, setIsPreviewMode] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [isDownloadingImage, setIsDownloadingImage] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const invoiceRef = useRef<HTMLDivElement>(null);
+
   // Auto-save logic
   useEffect(() => {
-    if (!user || activeTab !== 'invoices' || invoiceTabMode !== 'editor' || isSavingToFirestore) return;
+    if (!user || activeTab !== 'invoices' || invoiceTabMode !== 'editor' || isSavingToFirestore || isPreviewMode) return;
     
     // Check for meaningful content to justify an auto-save
     const hasContent = invoiceData.clientName || invoiceData.items.some(i => i.description || i.price > 0);
@@ -646,7 +653,9 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
       invoiceTitle: invoiceData.invoiceTitle,
       serviceProvider: invoiceData.serviceProvider,
       phoneNumber: invoiceData.phoneNumber,
-      customActivity: invoiceData.customActivity
+      customActivity: invoiceData.customActivity,
+      paidAmount: invoiceData.paidAmount,
+      contactId: invoiceData.contactId
     });
 
     if (currentDataStr === lastSavedDataRef.current) return;
@@ -710,17 +719,10 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
       } finally {
         setIsAutoSaving(false);
       }
-    }, 3000); // 3 second debounce
+    }, 1500); // Shorter debounce for better responsiveness
 
     return () => clearTimeout(timer);
-  }, [invoiceData, user, activeTab, invoiceTabMode, businessInfo, savedInvoices, total, lang]);
-
-  const [isPreviewMode, setIsPreviewMode] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
-  const [isDownloadingImage, setIsDownloadingImage] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const invoiceRef = useRef<HTMLDivElement>(null);
+  }, [invoiceData, user, activeTab, invoiceTabMode, businessInfo, savedInvoices, total, lang, isPreviewMode]);
 
   // Map existing contacts to the format needed for the new UI
   const allClients = useMemo(() => {
@@ -1320,7 +1322,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
         updatedAt: serverTimestamp()
       };
       
-      const isActuallyFirestoreId = invoiceData.id && !invoiceData.id.includes('-') && invoiceData.id.length > 5;
+      const isActuallyFirestoreId = !!invoiceData.id && invoiceData.id.length > 5;
 
       if (isActuallyFirestoreId) {
         console.log("[Firestore] Updating existing invoice:", invoiceData.id);
@@ -1548,8 +1550,39 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
 
     if (!user) {
       setSavedInvoices(prev => {
+        const oldInvoice = prev.find(inv => inv.id === id);
         const updated = prev.filter(inv => inv.id !== id);
         localStorage.setItem('gn_invoice_history', JSON.stringify(updated));
+        
+        // Handle guest local storage for associated contact too
+        if (oldInvoice?.contactId) {
+          setContacts(contactsPrev => {
+            const isPaid = oldInvoice.status === 'paid';
+            const isPartial = oldInvoice.status === 'partially-paid';
+            const oldPaid = isPaid ? (oldInvoice.totalAmount || 0) : (isPartial ? (oldInvoice.paidAmount || 0) : 0);
+            const oldBalance = (oldInvoice.totalAmount || 0) - oldPaid;
+
+            const updatedContacts = contactsPrev.map(c => {
+              if (c.id === oldInvoice.contactId) {
+                return {
+                  ...c,
+                  totalInvoices: Math.max(0, (c.totalInvoices || 0) - (oldInvoice.totalAmount || 0)),
+                  totalPaid: Math.max(0, (c.totalPaid || 0) - oldPaid),
+                  totalBalance: Math.max(0, (c.totalBalance || 0) - oldBalance)
+                };
+              }
+              return c;
+            });
+            localStorage.setItem('gn_contacts', JSON.stringify(updatedContacts));
+            return updatedContacts;
+          });
+          
+          setPayments(paymentsPrev => {
+            const filtered = paymentsPrev.filter(p => p.invoiceId !== id || !p.note?.startsWith('Automated payment for'));
+            localStorage.setItem('gn_payments', JSON.stringify(filtered));
+            return filtered;
+          });
+        }
         
         setShowSaveSuccess(true);
         setTimeout(() => setShowSaveSuccess(false), 3000);
@@ -1560,7 +1593,51 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     }
 
     try {
-      await deleteDoc(doc(db, "invoices", id));
+      // Fetch invoice info before deleting to update client totals
+      const invoiceRef = doc(db, "invoices", id);
+      const invoiceSnap = await getDoc(invoiceRef);
+      
+      if (invoiceSnap.exists()) {
+        const invoiceData = invoiceSnap.data() as InvoiceData;
+        
+        if (invoiceData.contactId) {
+          const contactRef = doc(db, "clients", invoiceData.contactId);
+          const contactSnap = await getDoc(contactRef);
+          
+          if (contactSnap.exists()) {
+            const contactData = contactSnap.data();
+            const isPaid = invoiceData.status === 'paid';
+            const isPartial = invoiceData.status === 'partially-paid';
+            const oldPaid = isPaid ? (invoiceData.totalAmount || 0) : (isPartial ? (invoiceData.paidAmount || 0) : 0);
+            const oldBalance = (invoiceData.totalAmount || 0) - oldPaid;
+            
+            await updateDoc(contactRef, {
+              totalInvoices: Math.max(0, (contactData.totalInvoices || 0) - (invoiceData.totalAmount || 0)),
+              totalPaid: Math.max(0, (contactData.totalPaid || 0) - oldPaid),
+              totalBalance: Math.max(0, (contactData.totalBalance || 0) - oldBalance),
+              updatedAt: serverTimestamp()
+            });
+
+            // Cleanup associated automated payments
+            const paymentsQuery = query(
+              collection(db, "payments"), 
+              where("invoiceId", "==", id),
+              where("userId", "==", user.uid)
+            );
+            const paymentsSnap = await getDocs(paymentsQuery);
+            for (const pDoc of paymentsSnap.docs) {
+              if (pDoc.data().note?.startsWith('Automated payment for')) {
+                await deleteDoc(pDoc.ref);
+              }
+            }
+          }
+        }
+      }
+
+      await deleteDoc(invoiceRef);
+      
+      setShowSaveSuccess(true);
+      setTimeout(() => setShowSaveSuccess(false), 3000);
     } catch (error) {
       console.error("Firestore delete error:", error);
     }
@@ -2075,8 +2152,8 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     }
   };
 
-  const handleGenerate = () => {
-    console.log("Generating invoice...");
+  const handleGenerate = async () => {
+    console.log("Generating invoice and saving to history...");
     setFormError(null);
     
     // Filter out items that are completely empty
@@ -2096,7 +2173,15 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     setIsGenerating(true);
     
     // Update with cleaned items
-    setInvoiceData(prev => ({ ...prev, items: validItems }));
+    const updatedData = { ...invoiceData, items: validItems };
+    setInvoiceData(updatedData);
+
+    // Automatically save to history when generating
+    try {
+      await handleSaveToHistory();
+    } catch (saveErr) {
+      console.error("Auto-save to history failed during generation:", saveErr);
+    }
 
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
