@@ -410,6 +410,32 @@ interface Product {
   cost: number;
 }
 
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  }
+}
+
 // --- Utilities ---
 const generateId = () => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -417,6 +443,27 @@ const generateId = () => {
   }
   return Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
 };
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData?.map(provider => ({
+        providerId: provider.providerId,
+        email: provider.email,
+      })) || []
+    },
+    operationType,
+    path
+  }
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
 
 // --- Components ---
 
@@ -549,6 +596,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isSavingToFirestore, setIsSavingToFirestore] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<string | null>(null);
   const [saveNameInput, setSaveNameInput] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showAddContact, setShowAddContact] = useState(false);
@@ -3061,7 +3109,21 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
         isApproved: !currentStatus
       });
     } catch (err) {
-      console.error("Error updating user status:", err);
+      handleFirestoreError(err, OperationType.UPDATE, `users_profiles/${uid}`);
+    }
+  };
+
+  const handleDeleteUser = (uid: string) => {
+    setUserToDelete(uid);
+  };
+
+  const confirmDeleteUser = async () => {
+    if (!userToDelete) return;
+    try {
+      await deleteDoc(doc(db, "users_profiles", userToDelete));
+      setUserToDelete(null);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `users_profiles/${userToDelete}`);
     }
   };
 
@@ -3116,17 +3178,29 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                   </div>
                 </td>
                 <td className="px-8 py-6 text-right">
-                  <Button 
-                    variant={u.isApproved ? "danger" : "primary"}
-                    size="sm"
-                    onClick={() => toggleUserApproval(u.uid, u.isApproved)}
-                    disabled={u.email === ADMIN_EMAIL}
-                    className="h-10 px-6 rounded-2xl font-black uppercase tracking-widest text-[10px]"
-                  >
-                    {u.isApproved 
-                      ? (lang === 'en' ? 'Revoke' : 'إلغاء') 
-                      : (lang === 'en' ? 'Approve' : 'قبول')}
-                  </Button>
+                  <div className="flex items-center justify-end gap-2">
+                    <Button 
+                      variant={u.isApproved ? "danger" : "primary"}
+                      size="sm"
+                      onClick={() => toggleUserApproval(u.uid, u.isApproved)}
+                      disabled={u.email === ADMIN_EMAIL}
+                      className="h-10 px-6 rounded-2xl font-black uppercase tracking-widest text-[10px]"
+                    >
+                      {u.isApproved 
+                        ? (lang === 'en' ? 'Revoke' : 'إلغاء') 
+                        : (lang === 'en' ? 'Approve' : 'قبول')}
+                    </Button>
+                    {u.email !== ADMIN_EMAIL && (
+                      <Button 
+                        variant="danger"
+                        size="icon"
+                        onClick={() => handleDeleteUser(u.uid)}
+                        className="h-10 w-10 rounded-2xl"
+                      >
+                        <Trash2 size={18} />
+                      </Button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -4687,6 +4761,31 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
               <div className="flex gap-3">
                 <Button variant="ghost" onClick={() => setShowDeleteConfirm(false)} className="flex-1 py-4">{lang === 'ar' ? 'تراجع' : 'Cancel'}</Button>
                 <Button variant="primary" onClick={handleDeleteInvoice} className="flex-1 py-4 bg-red-500 hover:bg-red-600 text-white border-none shadow-none">{lang === 'ar' ? 'حذف الآن' : 'Delete Now'}</Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {userToDelete && (
+          <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} onClick={() => setUserToDelete(null)} className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="relative w-full max-w-sm rounded-[32px] bg-white dark:bg-[#0F172A] p-8 shadow-2xl text-center">
+              <div className="w-16 h-16 bg-red-50 dark:bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                <Trash2 size={32} className="text-red-500" />
+              </div>
+              <h3 className="text-xl font-bold mb-2">{lang === 'en' ? 'Delete User?' : 'حذف المستخدم؟'}</h3>
+              <p className="text-[#666666] dark:text-[#94A3B8] text-sm mb-8">
+                {lang === 'en' 
+                  ? 'This will permanently remove the user profile and revoke their system access.' 
+                  : 'سيؤدي هذا إلى حذف ملف تعريف المستخدم نهائياً وإلغاء وصوله إلى النظام.'}
+              </p>
+              <div className="flex gap-3">
+                <Button variant="outline" onClick={() => setUserToDelete(null)} className="flex-1 py-4">
+                  {lang === 'en' ? 'Cancel' : 'إلغاء'}
+                </Button>
+                <Button onClick={confirmDeleteUser} className="flex-1 py-4 bg-red-500 hover:bg-red-600 border-none text-white font-bold">
+                  {lang === 'en' ? 'Delete' : 'حذف'}
+                </Button>
               </div>
             </motion.div>
           </div>

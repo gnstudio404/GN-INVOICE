@@ -82,6 +82,7 @@ service cloud.firestore {
       allow list: if isSuperAdmin();
       allow create: if isSignedIn() && request.auth.uid == userId;
       allow update: if isSuperAdmin() || (isSignedIn() && request.auth.uid == userId && !incoming().diff(existing()).affectedKeys().hasAny(['isApproved']));
+      allow delete: if isSuperAdmin();
     }
 
     function canModifyData(ownerId) {
