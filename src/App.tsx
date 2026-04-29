@@ -595,6 +595,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
   const [showDebug, setShowDebug] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isSavingToFirestore, setIsSavingToFirestore] = useState(false);
+  const [isAutoSaving, setIsAutoSaving] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [userToDelete, setUserToDelete] = useState<string | null>(null);
   const [saveNameInput, setSaveNameInput] = useState('');
@@ -624,6 +625,95 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
   });
 
   const total = invoiceData.items.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
+
+  const lastSavedDataRef = useRef<string>('');
+
+  // Auto-save logic
+  useEffect(() => {
+    if (!user || activeTab !== 'invoices' || invoiceTabMode !== 'editor' || isSavingToFirestore) return;
+    
+    // Check for meaningful content to justify an auto-save
+    const hasContent = invoiceData.clientName || invoiceData.items.some(i => i.description || i.price > 0);
+    if (!hasContent) return;
+
+    // Check if data actually changed since last auto-save to avoid redundant writes
+    const currentDataStr = JSON.stringify({
+      clientName: invoiceData.clientName,
+      clientPhone: invoiceData.clientPhone,
+      items: invoiceData.items,
+      status: invoiceData.status,
+      currency: invoiceData.currency,
+      invoiceTitle: invoiceData.invoiceTitle,
+      serviceProvider: invoiceData.serviceProvider,
+      phoneNumber: invoiceData.phoneNumber,
+      customActivity: invoiceData.customActivity
+    });
+
+    if (currentDataStr === lastSavedDataRef.current) return;
+
+    const timer = setTimeout(async () => {
+      setIsAutoSaving(true);
+      try {
+        const currentId = invoiceData.id || generateId();
+        
+        let serialNumber = invoiceData.serialNumber;
+        if (!serialNumber) {
+          const prefix = businessInfo?.invoicePrefix || 'INV';
+          const lastSerial = savedInvoices.length > 0 
+            ? Math.max(...savedInvoices.map(inv => {
+                if (inv.serialNumber && inv.serialNumber.startsWith(prefix)) {
+                  const match = inv.serialNumber.match(/\d+/);
+                  return match ? parseInt(match[0]) : 0;
+                }
+                return 0;
+              }), 0)
+            : 0;
+          serialNumber = `${prefix}-${String(lastSerial + 1).padStart(4, '0')}`;
+        }
+
+        const finalTitle = invoiceData.invoiceTitle || (lang === 'ar' ? translations.ar.invoiceTitleDefault : translations.en.invoiceTitleDefault);
+
+        const dataToSave = {
+          ...invoiceData,
+          id: currentId,
+          serialNumber,
+          invoiceTitle: finalTitle,
+          totalAmount: total,
+          userId: user.uid,
+          updatedAt: serverTimestamp(),
+          lastAutoSavedAt: new Date().toISOString()
+        };
+
+        const docRef = doc(db, "invoices", currentId);
+        await setDoc(docRef, dataToSave, { merge: true });
+
+        // Update local state if it was a new invoice to ensure we keep using the same ID
+        if (!invoiceData.id) {
+          setInvoiceData(prev => ({ ...prev, id: currentId, serialNumber, invoiceTitle: finalTitle }));
+        }
+
+        lastSavedDataRef.current = currentDataStr;
+        
+        // Update local list
+        setSavedInvoices(prev => {
+          const exists = prev.findIndex(inv => inv.id === currentId);
+          if (exists !== -1) {
+            const updated = [...prev];
+            updated[exists] = { ...dataToSave, updatedAt: new Date() } as any;
+            return updated;
+          }
+          return [{ ...dataToSave, updatedAt: new Date() } as any, ...prev];
+        });
+
+      } catch (err) {
+        console.error("Auto-save failed", err);
+      } finally {
+        setIsAutoSaving(false);
+      }
+    }, 3000); // 3 second debounce
+
+    return () => clearTimeout(timer);
+  }, [invoiceData, user, activeTab, invoiceTabMode, businessInfo, savedInvoices, total, lang]);
 
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -4037,11 +4127,25 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
                     <div className="md:col-span-2 relative">
                       <div className="flex items-center justify-between mb-2">
                         <Label className="mb-0">{t.invoiceTitle}</Label>
-                        {invoiceData.serialNumber && (
-                          <span className="text-xs font-black text-blue-600 bg-blue-100 dark:bg-blue-500/20 px-3 py-1 rounded-full uppercase tracking-widest">
-                            {invoiceData.serialNumber}
-                          </span>
-                        )}
+                        <div className="flex items-center gap-3">
+                          {isAutoSaving && (
+                            <span className="flex items-center gap-1.5 text-[10px] font-bold text-blue-500 animate-pulse">
+                              <Cloud size={12} />
+                              {lang === 'ar' ? 'جاري الحفظ...' : 'Auto-saving...'}
+                            </span>
+                          )}
+                          {!isAutoSaving && lastSavedDataRef.current && (
+                            <span className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-500">
+                              <CheckCircle2 size={12} />
+                              {lang === 'ar' ? 'تم الحفظ' : 'Saved'}
+                            </span>
+                          )}
+                          {invoiceData.serialNumber && (
+                            <span className="text-xs font-black text-blue-600 bg-blue-100 dark:bg-blue-500/20 px-3 py-1 rounded-full uppercase tracking-widest">
+                              {invoiceData.serialNumber}
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <Input 
                         placeholder={t.invoiceTitlePlaceholder}
