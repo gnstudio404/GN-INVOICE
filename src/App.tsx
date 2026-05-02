@@ -83,7 +83,9 @@ import {
   Megaphone,
   RefreshCcw,
   Receipt,
-  Pencil
+  Pencil,
+  Activity,
+  ReceiptText
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Sidebar from './components/Sidebar';
@@ -600,6 +602,62 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
   const [userToDelete, setUserToDelete] = useState<string | null>(null);
   const [saveNameInput, setSaveNameInput] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [selectedUserForStats, setSelectedUserForStats] = useState<string | null>(null);
+  const [subscriberStats, setSubscriberStats] = useState<Record<string, any>>({});
+
+  const fetchUserStats = async (userId: string) => {
+    if (subscriberStats[userId] && !subscriberStats[userId].loading && !subscriberStats[userId].error) return;
+    
+    setSubscriberStats(prev => ({ ...prev, [userId]: { ...prev[userId], loading: true, error: false } }));
+    
+    try {
+      // Fetch invoices
+      const invQuery = query(collection(db, "invoices"), where("userId", "==", userId));
+      const invSnap = await getDocs(invQuery);
+      const invoices = invSnap.docs.map(doc => doc.data());
+      
+      // Fetch clients
+      const clientQuery = query(collection(db, "clients"), where("userId", "==", userId));
+      const clientSnap = await getDocs(clientQuery);
+      
+      let totalRevenue = 0;
+      let totalReceivables = 0;
+      let lastActive = null;
+      
+      invoices.forEach(inv => {
+        const totalAmount = Number(inv.totalAmount) || 0;
+        const paidAmount = Number(inv.paidAmount) || 0;
+        
+        totalRevenue += paidAmount;
+        totalReceivables += Math.max(0, totalAmount - paidAmount);
+        
+        let date = null;
+        if (inv.updatedAt?.toDate) date = inv.updatedAt.toDate();
+        else if (inv.createdAt?.toDate) date = inv.createdAt.toDate();
+        else if (inv.savedAt) date = new Date(inv.savedAt);
+        
+        if (date && (!lastActive || date > lastActive)) {
+          lastActive = date;
+        }
+      });
+      
+      setSubscriberStats(prev => ({
+        ...prev,
+        [userId]: {
+          revenue: totalRevenue,
+          receivables: totalReceivables,
+          invoiceCount: invoices.length,
+          clientCount: clientSnap.size,
+          lastActive,
+          loading: false
+        }
+      }));
+    } catch (error) {
+      console.error("Error fetching user stats:", error);
+      setSubscriberStats(prev => ({ ...prev, [userId]: { loading: false, error: true } }));
+    }
+  };
+
   const [showAddContact, setShowAddContact] = useState(false);
   const [editingContactId, setEditingContactId] = useState<string | null>(null);
   const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
@@ -2538,7 +2596,7 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
       activityIndex: businessInfo?.activityIndex || 0,
       customActivity: businessInfo?.customActivity || '',
       logo: businessInfo?.logo || null,
-      phoneNumber: '',
+      phoneNumber: businessInfo?.phone || '',
       items: [{ id: generateId(), description: '', price: 0 }],
       totalAmount: 0,
       status: 'pending',
@@ -2594,12 +2652,13 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     const newInvoice: InvoiceData = {
       invoiceTitle: translations[lang].invoiceTitleDefault,
       serialNumber,
-      serviceProvider: businessInfo?.name || '',
+      serviceProvider: businessInfo?.name || invoiceData.serviceProvider || '',
       clientName: client.name,
-      activityIndex: businessInfo?.activityIndex || 0,
-      customActivity: businessInfo?.customActivity || '',
-      logo: businessInfo?.logo || null,
-      phoneNumber: client.phone || '',
+      clientPhone: client.phone || '',
+      activityIndex: businessInfo?.activityIndex || invoiceData.activityIndex || 0,
+      customActivity: businessInfo?.customActivity || invoiceData.customActivity || '',
+      logo: businessInfo?.logo || invoiceData.logo || null,
+      phoneNumber: businessInfo?.phone || invoiceData.phoneNumber || '',
       contactId: client.id,
       items: [{ id: generateId(), description: '', price: 0 }],
       totalAmount: 0,
@@ -2688,14 +2747,14 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
     const newInvoice: InvoiceData = {
       invoiceTitle: lang === 'ar' ? translations.ar.invoiceTitleDefault : translations.en.invoiceTitleDefault,
       serialNumber,
-      serviceProvider: invoiceData.serviceProvider || '',
+      serviceProvider: businessInfo?.name || invoiceData.serviceProvider || '',
       clientName: contact.name,
       clientPhone: contact.phone || '',
       contactId: contact.id,
-      activityIndex: invoiceData.activityIndex || 0,
-      customActivity: invoiceData.customActivity || '',
-      logo: invoiceData.logo || null,
-      phoneNumber: invoiceData.phoneNumber || '',
+      activityIndex: businessInfo?.activityIndex || invoiceData.activityIndex || 0,
+      customActivity: businessInfo?.customActivity || invoiceData.customActivity || '',
+      logo: businessInfo?.logo || invoiceData.logo || null,
+      phoneNumber: businessInfo?.phone || invoiceData.phoneNumber || '',
       items: [{ id: generateId(), description: '', price: 0 }],
       totalAmount: 0,
       status: 'pending',
@@ -3420,59 +3479,159 @@ function InvoicePage({ lang, setLang, isDarkMode, setIsDarkMode }: { lang: 'en' 
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50 dark:divide-white/5">
-            {allUsers.map((u) => (
-              <tr key={u.uid} className="hover:bg-slate-50/50 dark:hover:bg-white/[0.02] transition-colors">
-                <td className="px-8 py-6">
-                  <div className="flex items-center gap-4">
-                    <img src={u.photoURL || null} alt="" className="w-10 h-10 rounded-full border-2 border-brand-primary" />
-                    <div>
-                      <div className="font-black text-sm uppercase tracking-tight">{u.displayName}</div>
-                      <div className="text-[10px] text-slate-400 font-bold">{u.email}</div>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-8 py-6 text-xs font-bold text-slate-400">
-                  {u.createdAt?.toDate ? u.createdAt.toDate().toLocaleDateString() : 'N/A'}
-                </td>
-                <td className="px-8 py-6">
-                  <div className="flex justify-center">
-                    <span className={cn(
-                      "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tight",
-                      u.isApproved 
-                        ? "bg-emerald-500/10 text-emerald-500" 
-                        : "bg-red-500/10 text-red-500"
-                    )}>
-                      {u.isApproved ? (lang === 'en' ? 'Approved' : 'مقبول') : (lang === 'en' ? 'Pending' : 'معلق')}
-                    </span>
-                  </div>
-                </td>
-                <td className="px-8 py-6 text-right">
-                  <div className="flex items-center justify-end gap-2">
-                    <Button 
-                      variant={u.isApproved ? "danger" : "primary"}
-                      size="sm"
-                      onClick={() => toggleUserApproval(u.uid, u.isApproved)}
-                      disabled={u.email === ADMIN_EMAIL}
-                      className="h-10 px-6 rounded-2xl font-black uppercase tracking-widest text-[10px]"
-                    >
-                      {u.isApproved 
-                        ? (lang === 'en' ? 'Revoke' : 'إلغاء') 
-                        : (lang === 'en' ? 'Approve' : 'قبول')}
-                    </Button>
-                    {u.email !== ADMIN_EMAIL && (
-                      <Button 
-                        variant="danger"
-                        size="icon"
-                        onClick={() => handleDeleteUser(u.uid)}
-                        className="h-10 w-10 rounded-2xl"
-                      >
-                        <Trash2 size={18} />
-                      </Button>
+            {allUsers.map((u) => {
+              const stats = subscriberStats[u.uid];
+              const isSelected = selectedUserForStats === u.uid;
+
+              return (
+                <React.Fragment key={u.uid}>
+                  <tr className={cn(
+                    "hover:bg-slate-50/50 dark:hover:bg-white/[0.02] transition-colors cursor-pointer",
+                    isSelected && "bg-blue-50/50 dark:bg-blue-500/5 hover:bg-blue-50/50"
+                  )} onClick={() => {
+                    if (isSelected) {
+                      setSelectedUserForStats(null);
+                    } else {
+                      setSelectedUserForStats(u.uid);
+                      fetchUserStats(u.uid);
+                    }
+                  }}>
+                    <td className="px-8 py-6">
+                      <div className="flex items-center gap-4">
+                        <img src={u.photoURL || null} alt="" className="w-10 h-10 rounded-full border-2 border-brand-primary" />
+                        <div>
+                          <div className="font-black text-sm uppercase tracking-tight">{u.displayName}</div>
+                          <div className="text-[10px] text-slate-400 font-bold">{u.email}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-8 py-6 text-xs font-bold text-slate-400">
+                      {u.createdAt?.toDate ? u.createdAt.toDate().toLocaleDateString() : 'N/A'}
+                    </td>
+                    <td className="px-8 py-6">
+                      <div className="flex justify-center">
+                        <span className={cn(
+                          "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tight",
+                          u.isApproved 
+                            ? "bg-emerald-500/10 text-emerald-500" 
+                            : "bg-red-500/10 text-red-500"
+                        )}>
+                          {u.isApproved ? (lang === 'en' ? 'Approved' : 'مقبول') : (lang === 'en' ? 'Pending' : 'معلق')}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-8 py-6 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <Button 
+                          variant="ghost"
+                          size="icon"
+                          className={cn("h-8 w-8 rounded-full transition-transform", isSelected && "rotate-90")}
+                        >
+                          <ChevronRight size={18} />
+                        </Button>
+                        <Button 
+                          variant={u.isApproved ? "danger" : "primary"}
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleUserApproval(u.uid, u.isApproved);
+                          }}
+                          disabled={u.email === ADMIN_EMAIL}
+                          className="h-10 px-6 rounded-2xl font-black uppercase tracking-widest text-[10px]"
+                        >
+                          {u.isApproved 
+                            ? (lang === 'en' ? 'Revoke' : 'إلغاء') 
+                            : (lang === 'en' ? 'Approve' : 'قبول')}
+                        </Button>
+                        {u.email !== ADMIN_EMAIL && (
+                          <Button 
+                            variant="danger"
+                            size="icon"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteUser(u.uid);
+                            }}
+                            className="h-10 w-10 rounded-2xl"
+                          >
+                            <Trash2 size={18} />
+                          </Button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                  
+                  <AnimatePresence>
+                    {isSelected && (
+                      <tr>
+                        <td colSpan={4} className="px-8 py-0 border-none overflow-hidden">
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            className="pb-8"
+                          >
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-6 bg-slate-50 dark:bg-white/5 rounded-[32px] border border-blue-100/50 dark:border-blue-500/10">
+                              {stats?.loading ? (
+                                <div className="col-span-4 py-8 flex items-center justify-center gap-3">
+                                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+                                  <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                                    {lang === 'en' ? 'Loading Insights...' : 'جاري تحميل البيانات...'}
+                                  </span>
+                                </div>
+                              ) : stats?.error ? (
+                                <div className="col-span-4 py-8 text-center text-xs font-bold text-red-400 uppercase tracking-widest">
+                                  {lang === 'en' ? 'Error loading data' : 'خطأ في تحميل البيانات'}
+                                </div>
+                              ) : (
+                                <>
+                                  <div className="space-y-1">
+                                    <div className="flex items-center gap-2 text-slate-400">
+                                      <TrendingUp size={14} />
+                                      <span className="text-[10px] font-black uppercase tracking-tight">{lang === 'en' ? 'Profits' : 'إجمالي الأرباح'}</span>
+                                    </div>
+                                    <div className="text-lg font-black text-emerald-500">{t.currencySymbol}{stats?.revenue?.toLocaleString() || 0}</div>
+                                  </div>
+                                  
+                                  <div className="space-y-1">
+                                    <div className="flex items-center gap-2 text-slate-400">
+                                      <Wallet size={14} />
+                                      <span className="text-[10px] font-black uppercase tracking-tight">{lang === 'en' ? 'Receivables' : 'إجمالي المستحقات'}</span>
+                                    </div>
+                                    <div className="text-lg font-black text-blue-500">{t.currencySymbol}{stats?.receivables?.toLocaleString() || 0}</div>
+                                  </div>
+                                  
+                                  <div className="space-y-1">
+                                    <div className="flex items-center gap-2 text-slate-400">
+                                      <ReceiptText size={14} />
+                                      <span className="text-[10px] font-black uppercase tracking-tight">{lang === 'en' ? 'Usage' : 'النشاط الفعلي'}</span>
+                                    </div>
+                                    <div className="text-lg font-black">{stats?.invoiceCount || 0} <span className="text-[10px] uppercase text-slate-400">{lang === 'en' ? 'Invoices' : 'فاتورة'}</span></div>
+                                    <div className="text-[10px] font-bold text-slate-400">{stats?.clientCount || 0} {lang === 'en' ? 'Contacts' : 'عميل'}</div>
+                                  </div>
+                                  
+                                  <div className="space-y-1">
+                                    <div className="flex items-center gap-2 text-slate-400">
+                                      <Activity size={14} />
+                                      <span className="text-[10px] font-black uppercase tracking-tight">{lang === 'en' ? 'Last Activity' : 'آخر نشاط'}</span>
+                                    </div>
+                                    <div className="text-sm font-bold text-slate-600 dark:text-slate-300">
+                                      {stats?.lastActive ? stats.lastActive.toLocaleDateString() : 'N/A'}
+                                    </div>
+                                    <div className="text-[10px] font-bold text-slate-400">
+                                      {stats?.lastActive ? stats.lastActive.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'No Activity'}
+                                    </div>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          </motion.div>
+                        </td>
+                      </tr>
                     )}
-                  </div>
-                </td>
-              </tr>
-            ))}
+                  </AnimatePresence>
+                </React.Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>

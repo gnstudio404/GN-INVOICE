@@ -90,51 +90,51 @@ service cloud.firestore {
     }
 
     match /invoices/{invoiceId} {
-      allow get: if canModifyData(resource.data.userId);
-      allow list: if isApproved() && resource.data.userId == request.auth.uid;
+      allow get: if canModifyData(resource.data.userId) || isSuperAdmin();
+      allow list: if isSuperAdmin() || (isApproved() && resource.data.userId == request.auth.uid);
       allow create: if isApproved() && isValidInvoice(incoming());
-      allow update: if canModifyData(resource.data.userId) && isValidInvoice(incoming());
-      allow delete: if canModifyData(resource.data.userId);
+      allow update: if (canModifyData(resource.data.userId) || isSuperAdmin()) && isValidInvoice(incoming());
+      allow delete: if canModifyData(resource.data.userId) || isSuperAdmin();
     }
 
     match /clients/{clientId} {
-      allow get: if canModifyData(resource.data.userId);
-      allow list: if isApproved() && resource.data.userId == request.auth.uid;
+      allow get: if canModifyData(resource.data.userId) || isSuperAdmin();
+      allow list: if isSuperAdmin() || (isApproved() && resource.data.userId == request.auth.uid);
       allow create: if isApproved() && isValidContact(incoming());
-      allow update: if canModifyData(resource.data.userId) && (
-        !('userId' in incoming()) || incoming().userId == request.auth.uid
+      allow update: if (canModifyData(resource.data.userId) || isSuperAdmin()) && (
+        !('userId' in incoming()) || incoming().userId == request.auth.uid || isSuperAdmin()
       ) && (!('name' in incoming()) || (incoming().name is string && incoming().name.size() > 0));
-      allow delete: if canModifyData(resource.data.userId);
+      allow delete: if canModifyData(resource.data.userId) || isSuperAdmin();
     }
 
     match /payments/{paymentId} {
-      allow get: if canModifyData(resource.data.userId);
-      allow list: if isApproved() && resource.data.userId == request.auth.uid;
+      allow get: if canModifyData(resource.data.userId) || isSuperAdmin();
+      allow list: if isSuperAdmin() || (isApproved() && resource.data.userId == request.auth.uid);
       allow create: if isApproved() && isValidPayment(incoming());
-      allow update: if canModifyData(resource.data.userId) && (
-        !('userId' in incoming()) || incoming().userId == request.auth.uid
+      allow update: if (canModifyData(resource.data.userId) || isSuperAdmin()) && (
+        !('userId' in incoming()) || incoming().userId == request.auth.uid || isSuperAdmin()
       ) && (!('amount' in incoming()) || incoming().amount is number);
-      allow delete: if canModifyData(resource.data.userId);
+      allow delete: if canModifyData(resource.data.userId) || isSuperAdmin();
     }
 
     match /expenses/{expenseId} {
-      allow get: if canModifyData(resource.data.userId);
-      allow list: if isApproved() && resource.data.userId == request.auth.uid;
+      allow get: if canModifyData(resource.data.userId) || isSuperAdmin();
+      allow list: if isSuperAdmin() || (isApproved() && resource.data.userId == request.auth.uid);
       allow create: if isApproved() && isValidExpense(incoming());
-      allow update: if canModifyData(resource.data.userId) && (
-        !('userId' in incoming()) || incoming().userId == request.auth.uid
+      allow update: if (canModifyData(resource.data.userId) || isSuperAdmin()) && (
+        !('userId' in incoming()) || incoming().userId == request.auth.uid || isSuperAdmin()
       ) && (!('amount' in incoming()) || incoming().amount is number);
-      allow delete: if canModifyData(resource.data.userId);
+      allow delete: if canModifyData(resource.data.userId) || isSuperAdmin();
     }
 
     match /products/{productId} {
-      allow get: if canModifyData(resource.data.userId);
-      allow list: if isApproved() && resource.data.userId == request.auth.uid;
+      allow get: if canModifyData(resource.data.userId) || isSuperAdmin();
+      allow list: if isSuperAdmin() || (isApproved() && resource.data.userId == request.auth.uid);
       allow create: if isApproved() && isValidProduct(incoming());
-      allow update: if canModifyData(resource.data.userId) && (
-        !('userId' in incoming()) || incoming().userId == request.auth.uid
+      allow update: if (canModifyData(resource.data.userId) || isSuperAdmin()) && (
+        !('userId' in incoming()) || incoming().userId == request.auth.uid || isSuperAdmin()
       ) && (!('price' in incoming()) || incoming().price is number);
-      allow delete: if canModifyData(resource.data.userId);
+      allow delete: if canModifyData(resource.data.userId) || isSuperAdmin();
     }
 
     match /businessInfo/{userId} {
